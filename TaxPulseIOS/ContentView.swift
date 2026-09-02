@@ -897,6 +897,18 @@ struct ProfitResultCard: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .environment(\.layoutDirection, .leftToRight)
+                // Same existing exchange-rate logic the calculation itself uses
+                // (AppState.profitResult): a custom rate if the user entered one,
+                // otherwise the standard rate. Display-only — never touches the
+                // LBP total or the tax calculation above.
+                let profitUsdRate = Double(state.profitExchangeRate) ?? 89_500
+                if profitUsdRate > 0 {
+                    Text(Copy.t("approxUsdEquivalent", state.language)
+                        .replacingOccurrences(of: "%@", with: usdAmountText(result.totalTaxDue / profitUsdRate)))
+                        .font(.app(12, weight: .bold))
+                        .foregroundStyle(Color.slateTextDark)
+                        .environment(\.layoutDirection, .leftToRight)
+                }
                 Divider()
                 Text(Copy.t("remainingNetProfit", state.language))
                     .font(.app(11, weight: .bold))
