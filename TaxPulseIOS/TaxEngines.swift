@@ -1,5 +1,136 @@
 import Foundation
 
+struct PropertyTaxBracket {
+    let lower: Decimal
+    let upper: Decimal?
+    let percent: Int
+}
+
+struct PropertyTaxAllocation {
+    let bracket: PropertyTaxBracket
+    let income: Decimal
+    let tax: Decimal
+}
+
+struct PropertyTaxResult {
+    let year: Int
+    let revenue: Decimal
+    let deduction: Decimal
+    let taxableRevenue: Decimal
+    let allocations: [PropertyTaxAllocation]
+    let totalTax: Decimal
+}
+
+/// Supplied Tax on Properties 2024.pdf, used for 2025/2026 by user instruction.
+/// Annual LBP, one property, manually entered deduction applied once.
+/// Decimal arithmetic preserves the same exact amounts as Android BigDecimal.
+enum PropertyTaxEngine {
+    static let supportedYears = [2025, 2026]
+    static let standardExchangeRate: Decimal = 89_500
+    private static let maximumAmount = Decimal(string: "999999999999999999")!
+    private static let maximumRate = Decimal(string: "9999999999.9999")!
+    private static let pdfBrackets = [
+        PropertyTaxBracket(lower: 0, upper: 1_200_000_000, percent: 4),
+        PropertyTaxBracket(lower: 1_200_000_000, upper: 2_400_000_000, percent: 6),
+        PropertyTaxBracket(lower: 2_400_000_000, upper: 3_600_000_000, percent: 8),
+        PropertyTaxBracket(lower: 3_600_000_000, upper: 6_000_000_000, percent: 11),
+        PropertyTaxBracket(lower: 6_000_000_000, upper: nil, percent: 14)
+    ]
+    private static let schedules = [2025: pdfBrackets, 2026: pdfBrackets]
+
+    static func normalizeInput(_ raw: String) -> String {
+        var value = ""
+        for scalar in raw.unicodeScalars {
+            switch scalar.value {
+            case 0x30...0x39: value.unicodeScalars.append(scalar)
+            case 0x660...0x669: value += String(scalar.value - 0x660)
+            case 0x6F0...0x6F9: value += String(scalar.value - 0x6F0)
+            case 0x2C, 0x66C: value += ","
+            case 0x66B: value += "."
+            default:
+                if !CharacterSet.whitespacesAndNewlines.contains(scalar) {
+                    value.unicodeScalars.append(scalar)
+                }
+            }
+        }
+        guard value.contains(",") else { return value }
+        let parts = value.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count <= 2 else { return value }
+        let groups = parts[0].split(separator: ",", omittingEmptySubsequences: false)
+        let validGrouping = (1...3).contains(groups[0].count) && groups[0].utf8.allSatisfy { (48...57).contains($0) }
+            && groups.dropFirst().allSatisfy { $0.count == 3 && $0.utf8.allSatisfy { (48...57).contains($0) } }
+        // A decimal comma or malformed grouping must never turn into a larger amount.
+        return validGrouping ? groups.joined() + (parts.count == 2 ? "." + String(parts[1]) : "") : value
+    }
+
+    static func parseAmount(_ raw: String, blankAsZero: Bool = false) -> Decimal? {
+        let normalized = normalizeInput(raw)
+        if normalized.isEmpty { return blankAsZero && raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Decimal.zero : nil }
+        guard normalized.count <= 18, normalized.utf8.allSatisfy({ (48...57).contains($0) }) else { return nil }
+        return Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX"))
+    }
+
+    static func parseUsdAmount(_ raw: String, blankAsZero: Bool = false) -> Decimal? {
+        guard let value = parseDecimal(raw, blankAsZero: blankAsZero, integerDigits: 18, fractionDigits: 2), value <= maximumAmount else { return nil }
+        return value
+    }
+
+    static func parseExchangeRate(_ raw: String) -> Decimal? {
+        guard let value = parseDecimal(raw, integerDigits: 10, fractionDigits: 4), value > 0 else { return nil }
+        return value
+    }
+
+    private static func parseDecimal(_ raw: String, blankAsZero: Bool = false, integerDigits: Int, fractionDigits: Int) -> Decimal? {
+        let normalized = normalizeInput(raw)
+        if normalized.isEmpty { return blankAsZero && raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Decimal.zero : nil }
+        let pattern = "^[0-9]{1,\(integerDigits)}(\\.[0-9]{1,\(fractionDigits)})?$"
+        guard normalized.range(of: pattern, options: .regularExpression) != nil else { return nil }
+        return Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX"))
+    }
+
+    static func convertToLbp(_ amount: Decimal, exchangeRate: Decimal) -> Decimal? {
+        guard !amount.isNaN, amount >= 0, validDecimal(exchangeRate, maximum: maximumRate, fractionDigits: 4), exchangeRate > 0 else { return nil }
+        let converted = amount * exchangeRate
+        guard !converted.isNaN, converted <= maximumAmount else { return nil }
+        return converted
+    }
+
+    static func calculateUsd(year: Int, revenue: Decimal, deduction: Decimal, exchangeRate: Decimal) -> PropertyTaxResult? {
+        guard validDecimal(revenue, maximum: maximumAmount, fractionDigits: 2), validDecimal(deduction, maximum: maximumAmount, fractionDigits: 2),
+              let revenueLbp = convertToLbp(revenue, exchangeRate: exchangeRate),
+              let deductionLbp = convertToLbp(deduction, exchangeRate: exchangeRate) else { return nil }
+        return assess(year: year, revenue: revenueLbp, deduction: deductionLbp)
+    }
+
+    static func calculate(year: Int, revenue: Decimal, deduction: Decimal) -> PropertyTaxResult? {
+        guard validWholeAmount(revenue), validWholeAmount(deduction) else { return nil }
+        return assess(year: year, revenue: revenue, deduction: deduction)
+    }
+
+    private static func assess(year: Int, revenue: Decimal, deduction: Decimal) -> PropertyTaxResult? {
+        guard let brackets = schedules[year] else { return nil }
+        let taxable = max(Decimal.zero, revenue - deduction)
+        let allocations = brackets.map { bracket in
+            let income = max(Decimal.zero, min(taxable, bracket.upper ?? taxable) - bracket.lower)
+            return PropertyTaxAllocation(bracket: bracket, income: income, tax: income * Decimal(bracket.percent) / 100)
+        }
+        return PropertyTaxResult(year: year, revenue: revenue, deduction: deduction,
+            taxableRevenue: taxable, allocations: allocations, totalTax: allocations.reduce(Decimal.zero) { $0 + $1.tax })
+    }
+
+    private static func validWholeAmount(_ value: Decimal) -> Bool {
+        validDecimal(value, maximum: maximumAmount, fractionDigits: 0)
+    }
+
+    private static func validDecimal(_ value: Decimal, maximum: Decimal, fractionDigits: Int) -> Bool {
+        guard !value.isNaN, value >= 0, value <= maximum else { return false }
+        var source = value
+        var rounded = Decimal.zero
+        NSDecimalRound(&rounded, &source, fractionDigits, .plain)
+        return rounded == value
+    }
+}
+
 enum TaxEngines {
     static func calculateProfitTax(
         rawProfitInput: String,
@@ -68,7 +199,8 @@ enum TaxEngines {
         payYear: Int,
         dueDayOverride: Int?,
         dueMonthOverride: Int?,
-        dueYearOverride: Int?
+        dueYearOverride: Int?,
+        r5PrincipalTaxPaid: Bool = false
     ) -> PenaltyResult {
         let autoDue = statutoryDueDate(taxType: taxType, payrollYear: payrollYear, quarter: quarter, profitDueYear: profitDueYear, companyType: companyType)
         let dueDay = dueDayOverride ?? autoDue.day
@@ -102,14 +234,17 @@ enum TaxEngines {
             lateMonths = payDay > dueDay ? base + 1 : base
         }
 
-        let p1Rate = taxType == "PAYROLL" ? 0.05 : 0.10
+        let p1Rate = taxType == "PAYROLL" && quarter != "R5" ? 0.05 : 0.10
         let p2Rate = (taxType == "PAYROLL" || taxType == "VAT") ? 0.03 : 0.02
         let rawPenalty1 = lateMonths > 0 ? taxAmount * p1Rate * Double(lateMonths) : 0
         let cappedPenalty1 = taxAmount > 0 && lateMonths > 0 ? min(rawPenalty1, taxAmount) : 0
         let finalPenalty1Raw = lateMonths > 0 ? max(cappedPenalty1, minimumThreshold) : 0
         let verificationFine = finalPenalty1Raw > 0 ? ceil(finalPenalty1Raw / 10_000.0) * 10_000.0 : 0
-        let collectionFineRaw = lateMonths > 0 ? (taxAmount + verificationFine) * p2Rate * Double(lateMonths) : 0
+        let usesPaidR5Rules = taxType == "PAYROLL" && quarter == "R5" && r5PrincipalTaxPaid
+        let collectionPenaltyBase = usesPaidR5Rules ? verificationFine : taxAmount + verificationFine
+        let collectionFineRaw = lateMonths > 0 ? collectionPenaltyBase * p2Rate * Double(lateMonths) : 0
         let collectionFine = collectionFineRaw > 0 ? ceil(collectionFineRaw / 10_000.0) * 10_000.0 : 0
+        let principalTaxDue = usesPaidR5Rules ? 0 : taxAmount
 
         return PenaltyResult(
             statutoryDate: DateComponents(year: dueYear, month: dueMonth, day: dueDay),
@@ -118,7 +253,7 @@ enum TaxEngines {
             minimumThreshold: minimumThreshold,
             verificationFine: verificationFine,
             collectionFine: collectionFine,
-            totalAmount: taxAmount + verificationFine + collectionFine,
+            totalAmount: principalTaxDue + verificationFine + collectionFine,
             isDueDateAfterPayment: dateAfterPayment,
             isUnderMinimum: lateMonths > 0 && finalPenalty1Raw == minimumThreshold,
             isCapped: lateMonths > 0 && finalPenalty1Raw != minimumThreshold && rawPenalty1 > taxAmount

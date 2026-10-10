@@ -11,6 +11,7 @@ enum ServiceTab: Int, CaseIterable, Identifiable {
     case profit
     case penalties
     case extensions
+    case property
 
     var id: Int { rawValue }
 }
@@ -27,10 +28,21 @@ enum SalaryPeriod: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-enum MaritalStatus: String, CaseIterable, Identifiable {
+enum EmploymentType: String, CaseIterable, Identifiable, Codable {
+    case monthly = "MONTHLY"
+    case daily = "DAILY"
+    case hourly = "HOURLY"
+    case lumpSumWages = "LUMP_SUM_WAGES"
+
+    var id: String { rawValue }
+}
+
+enum MaritalStatus: String, CaseIterable, Identifiable, Codable {
     case single = "SINGLE"
     case spouseWorks = "SPOUSE_WORKS"
     case spouseDependent = "SPOUSE_DEPENDENT"
+    case divorced = "DIVORCED"
+    case widowed = "WIDOWED"
 
     var id: String { rawValue }
 
@@ -39,11 +51,13 @@ enum MaritalStatus: String, CaseIterable, Identifiable {
         case .single: "SINGLE"
         case .spouseWorks: "MARRIED_WIFE_WORKING"
         case .spouseDependent: "MARRIED_WIFE_NOT_WORKING"
+        case .divorced: "DIVORCED"
+        case .widowed: "WIDOWED"
         }
     }
 }
 
-struct LawConfig {
+struct LawConfig: Codable {
     var version = 2025
     var minimumWageJanJul = 18_000_000.0
     var minimumWageAugDec = 28_000_000.0
@@ -69,15 +83,23 @@ struct LawConfig {
     var lumpSumFlatTaxRate = 0.03
 }
 
-struct TaxBracket: Identifiable {
+struct TaxBracket: Identifiable, Codable {
     let id = UUID()
     var minAmount: Double
     var maxAmount: Double
     var rate: Double
+
+    enum CodingKeys: String, CodingKey {
+        case minAmount, maxAmount, rate
+    }
 }
 
-struct PayrollItem {
+struct PayrollItem: Codable {
+    var employmentType: EmploymentType
     var basicSalary: Double
+    var allowances: Double
+    var bonuses: Double
+    var overtime: Double
     var grossSalary: Double
     var sicknessMaternityBase: Double
     var sicknessMaternityEmployee: Double
@@ -97,9 +119,83 @@ struct PayrollItem {
     var netSalary: Double
     var totalEmployerCost: Double
     var hasMinimumWageWarning: Bool
+    var isDailyTaxApplied: Bool
+    var isLumpSumApplied: Bool
 }
 
-struct ProfitTaxResult {
+struct UserRecord: Identifiable, Codable {
+    var id: String
+    var fullName: String
+    var passwordHash: String
+    var role: String
+    var companyId: Int?
+    var is2FAEnabled: Bool
+    var status: String
+}
+
+struct CompanyRecord: Identifiable, Codable {
+    var id: Int
+    var name: String
+    var arabicName: String
+    var registrationNumber: String
+    var nssfNumber: String
+    var address: String
+    var phone: String
+    var isBlocked: Bool
+}
+
+struct EmployeeRecord: Identifiable, Codable {
+    var id: Int
+    var companyId: Int
+    var employeeNumber: String
+    var fullName: String
+    var arabicName: String
+    var email: String
+    var jobTitle: String
+    var department: String
+    var startDate: String
+    var employmentType: EmploymentType
+    var basicSalary: Double
+    var allowances: Double
+    var isNssfRegistered: Bool
+    var isTaxable: Bool
+    var maritalStatus: MaritalStatus
+    var childrenCount: Int
+    var bankName: String
+    var bankIban: String
+    var status: String
+}
+
+struct PayrollRunRecord: Identifiable, Codable {
+    var id: Int
+    var companyId: Int
+    var title: String
+    var month: Int
+    var year: Int
+    var status: String
+    var totalGross: Double
+    var totalNet: Double
+    var totalTax: Double
+    var totalNssfEmployee: Double
+    var totalNssfEmployer: Double
+    var totalEmployerCost: Double
+}
+
+struct AuditLogRecord: Identifiable, Codable {
+    var id: Int
+    var userId: String
+    var userName: String
+    var userRole: String
+    var companyId: Int?
+    var action: String
+    var oldValue: String
+    var newValue: String
+    var reason: String
+    var timestamp: Date
+    var ipAddress: String
+}
+
+struct ProfitTaxResult: Codable {
     var netTaxableProfit: Double
     var himselfRebate: Double
     var spouseRebate: Double
@@ -112,13 +208,17 @@ struct ProfitTaxResult {
     var bracketAllocations: [BracketAllocation]
 }
 
-struct BracketAllocation: Identifiable {
+struct BracketAllocation: Identifiable, Codable {
     let id = UUID()
     var rate: Double
     var from: Double
     var to: Double
     var amountInBracket: Double
     var taxInBracket: Double
+
+    enum CodingKeys: String, CodingKey {
+        case rate, from, to, amountInBracket, taxInBracket
+    }
 }
 
 struct PenaltyResult {

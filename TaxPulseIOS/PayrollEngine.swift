@@ -20,13 +20,17 @@ enum PayrollEngine {
             TaxBracket(minAmount: 900_000_000, maxAmount: 1_800_000_000, rate: 0.07),
             TaxBracket(minAmount: 1_800_000_000, maxAmount: 3_600_000_000, rate: 0.11),
             TaxBracket(minAmount: 3_600_000_000, maxAmount: 7_200_000_000, rate: 0.15),
-            TaxBracket(minAmount: 720_000_000, maxAmount: 13_500_000_000, rate: 0.20),
+            TaxBracket(minAmount: 7_200_000_000, maxAmount: 13_500_000_000, rate: 0.20),
             TaxBracket(minAmount: 13_500_000_000, maxAmount: .greatestFiniteMagnitude, rate: 0.25)
         ]
     }
 
     static func calculate(
-        gross: Double,
+        basicSalary: Double,
+        allowances: Double = 0,
+        bonuses: Double = 0,
+        overtime: Double = 0,
+        employmentType: EmploymentType = .monthly,
         maritalStatus: MaritalStatus,
         childrenCount: Int,
         month: Int,
@@ -38,17 +42,27 @@ enum PayrollEngine {
         familyCeilingOverride: Double? = nil
     ) -> PayrollItem {
         let isAnnual = period == .annual
-        let grossSalary = gross
-        let sicknessCeiling = sicknessCeilingOverride ?? ((month <= 7 ? lawConfig.nssfSicknessCeilingJanJul : lawConfig.nssfSicknessCeilingAugDec) * (isAnnual ? 12.0 : 1.0))
-        let sicknessBase = nssfRegistered ? min(grossSalary, sicknessCeiling) : 0
+        let grossSalary = basicSalary + allowances + bonuses + overtime
+        // An annual filing isn't tied to a single month's ceiling tier — its default
+        // is the latest approved monthly ceiling annualized (120,000,000 × 12 /
+        // 28,000,000 × 12), not the Jan–Jul/Aug–Dec split used for a single month.
+        let sicknessCeilingDefault = isAnnual
+            ? lawConfig.nssfSicknessCeilingAugDec * 12.0
+            : (month <= 7 ? lawConfig.nssfSicknessCeilingJanJul : lawConfig.nssfSicknessCeilingAugDec)
+        let sicknessCeiling = sicknessCeilingOverride ?? sicknessCeilingDefault
+        let nssfActualLimit = employmentType == .daily ? basicSalary * 30 : grossSalary
+        let sicknessBase = nssfRegistered ? min(nssfActualLimit, sicknessCeiling) : 0
         let sicknessEmployee = nssfRegistered ? sicknessBase * lawConfig.nssfSicknessRateEmployee : 0
         let sicknessEmployer = nssfRegistered ? sicknessBase * lawConfig.nssfSicknessRateEmployer : 0
 
-        let familyCeiling = familyCeilingOverride ?? ((month <= 6 ? lawConfig.nssfFamilyCeilingJanJul : lawConfig.nssfFamilyCeilingAugDec) * (isAnnual ? 12.0 : 1.0))
-        let familyBase = nssfRegistered ? min(grossSalary, familyCeiling) : 0
+        let familyCeilingDefault = isAnnual
+            ? lawConfig.nssfFamilyCeilingAugDec * 12.0
+            : (month <= 6 ? lawConfig.nssfFamilyCeilingJanJul : lawConfig.nssfFamilyCeilingAugDec)
+        let familyCeiling = familyCeilingOverride ?? familyCeilingDefault
+        let familyBase = nssfRegistered ? min(nssfActualLimit, familyCeiling) : 0
         let familyEmployer = nssfRegistered ? familyBase * lawConfig.nssfFamilyRateEmployer : 0
 
-        let endServiceBase = nssfRegistered ? grossSalary : 0
+        let endServiceBase = nssfRegistered ? nssfActualLimit : 0
         let endServiceEmployer = nssfRegistered ? endServiceBase * lawConfig.nssfEndServiceRateEmployer : 0
 
         let totalNssfEmployee = sicknessEmployee
@@ -64,25 +78,49 @@ enum PayrollEngine {
         }
         let familyBenefits = wifeBenefit + childBenefit
 
+        var isDailyTaxApplied = false
+        var isLumpSumApplied = false
         var rebates = 0.0
-        if useFamilyRebates {
-            rebates = isAnnual ? lawConfig.rebateSelfAnnual : lawConfig.rebateSelfMonthly
-            if maritalStatus == .spouseDependent {
-                rebates += isAnnual ? lawConfig.rebateWifeAnnual : lawConfig.rebateWifeMonthly
+        var taxableSalary = 0.0
+        var rawTaxAmount = 0.0
+
+        switch employmentType {
+        case .daily:
+            isDailyTaxApplied = true
+            rebates = useFamilyRebates ? lawConfig.rebateDailyEmployeeFixed : 0
+            taxableSalary = max(0, grossSalary - rebates)
+            rawTaxAmount = calculateProgressiveTax(taxableSalary, brackets: monthlyBrackets())
+        case .lumpSumWages:
+            isLumpSumApplied = true
+            rebates = 0
+            taxableSalary = grossSalary
+            rawTaxAmount = grossSalary * lawConfig.lumpSumFlatTaxRate
+        case .monthly, .hourly:
+            if useFamilyRebates {
+                rebates = isAnnual ? lawConfig.rebateSelfAnnual : lawConfig.rebateSelfMonthly
+                if maritalStatus == .spouseDependent {
+                    rebates += isAnnual ? lawConfig.rebateWifeAnnual : lawConfig.rebateWifeMonthly
+                }
+                let childUnit = isAnnual ? lawConfig.rebateChildAnnual : lawConfig.rebateChildMonthly
+                let childFactor = maritalStatus == .spouseWorks ? 0.5 : 1.0
+                rebates += childUnit * childFactor * Double(min(childrenCount, 5))
             }
-            let childUnit = isAnnual ? lawConfig.rebateChildAnnual : lawConfig.rebateChildMonthly
-            let childFactor = maritalStatus == .spouseWorks ? 0.5 : 1.0
-            rebates += childUnit * childFactor * Double(min(childrenCount, 5))
+            taxableSalary = max(0, grossSalary - rebates)
+            rawTaxAmount = calculateProgressiveTax(taxableSalary, brackets: isAnnual ? annualBrackets() : monthlyBrackets())
         }
 
-        let taxableSalary = max(0, grossSalary - rebates)
-        let taxAmount = roundUpTo10k(calculateProgressiveTax(taxableSalary, brackets: isAnnual ? annualBrackets() : monthlyBrackets()))
+        let taxAmount = roundUpTo10k(rawTaxAmount)
         let netSalary = grossSalary - taxAmount - totalNssfEmployee + familyBenefits
         let totalEmployerCost = grossSalary + totalNssfEmployer - familyBenefits
         let minimumWage = (month <= 7 ? lawConfig.minimumWageJanJul : lawConfig.minimumWageAugDec) * (isAnnual ? 12.0 : 1.0)
+        let isBelowMinWage = employmentType == .daily ? basicSalary < (minimumWage / 30.0) : basicSalary < minimumWage
 
         return PayrollItem(
-            basicSalary: grossSalary,
+            employmentType: employmentType,
+            basicSalary: basicSalary,
+            allowances: allowances,
+            bonuses: bonuses,
+            overtime: overtime,
             grossSalary: grossSalary,
             sicknessMaternityBase: sicknessBase,
             sicknessMaternityEmployee: sicknessEmployee,
@@ -101,7 +139,9 @@ enum PayrollEngine {
             taxAmount: taxAmount,
             netSalary: netSalary,
             totalEmployerCost: totalEmployerCost,
-            hasMinimumWageWarning: grossSalary < minimumWage
+            hasMinimumWageWarning: isBelowMinWage,
+            isDailyTaxApplied: isDailyTaxApplied,
+            isLumpSumApplied: isLumpSumApplied
         )
     }
 
