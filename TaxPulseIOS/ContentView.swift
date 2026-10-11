@@ -62,6 +62,14 @@ private struct TutorialMotionModifier: ViewModifier, Animatable {
     }
 }
 
+/// Clips horizontally to the view's bounds but leaves the top and bottom open, so
+/// backgrounds that ignore the safe area still reach the screen edges.
+private struct HorizontalClip: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path(rect.insetBy(dx: 0, dy: -10_000))
+    }
+}
+
 struct OnboardingHost: View {
     @EnvironmentObject private var state: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -69,9 +77,6 @@ struct OnboardingHost: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                LinearGradient(colors: [Color(red: 0.027, green: 0.043, blue: 0.098), Color(red: 0.118, green: 0.161, blue: 0.231)], startPoint: .top, endPoint: .bottom)
-                    .ignoresSafeArea()
-
                 switch state.onboardingStep {
                 case 1:
                     WelcomeScreen()
@@ -92,9 +97,15 @@ struct OnboardingHost: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipped()
+            // Clip only the sides (for the slide transition); a plain `.clipped()` would also
+            // cut each screen's full-bleed background off at the status bar and home indicator.
+            .clipShape(HorizontalClip())
             .animation(reduceMotion ? nil : TaxPulseMotion.curve(duration: 0.36), value: state.onboardingStep)
         }
+        .background(
+            LinearGradient(colors: [Color(red: 0.027, green: 0.043, blue: 0.098), Color(red: 0.118, green: 0.161, blue: 0.231)], startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea()
+        )
     }
     private func navigationTransition(travel: CGFloat) -> AnyTransition {
         guard !reduceMotion else { return .identity }
