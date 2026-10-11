@@ -92,6 +92,7 @@ final class AppState: ObservableObject {
             guard let index = args.firstIndex(of: flag), index + 1 < args.count else { return nil }
             return args[index + 1]
         }
+        // Steps: 1 welcome, 2 language, 3 sign in, 4 service, 5 calculator.
         if let raw = value(after: "-uiStep"), let step = Int(raw) {
             onboardingStep = step
         }
@@ -217,7 +218,7 @@ final class AppState: ObservableObject {
 
     func chooseService(_ tab: ServiceTab) {
         selectedTab = tab
-        onboardingStep = 4
+        onboardingStep = 5
     }
 
     func resetPayroll() {

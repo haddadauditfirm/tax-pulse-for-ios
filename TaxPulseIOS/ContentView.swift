@@ -1,17 +1,35 @@
 import SwiftUI
 
+/// Steps: 1 welcome → 2 language → 3 sign in (skipped when signed in) → 4 service → 5 app.
 struct ContentView: View {
     @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var auth: AuthStore
+    @EnvironmentObject private var updates: UpdateStore
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        Group {
-            if state.onboardingStep < 4 {
-                OnboardingHost()
-            } else {
-                CalculatorShell()
+        ZStack {
+            Group {
+                if state.onboardingStep < 5 {
+                    OnboardingHost()
+                } else {
+                    CalculatorShell()
+                }
             }
+            .environment(\.layoutDirection, state.language == .arabic ? .rightToLeft : .leftToRight)
+
+            AppUpdateHost()
         }
-        .environment(\.layoutDirection, state.language == .arabic ? .rightToLeft : .leftToRight)
+        // Signing in moves on to the service chooser; signing out (or deleting the
+        // account) from anywhere past the gate returns to the sign-in screen.
+        .onChange(of: auth.isSignedIn) { _, signedIn in
+            if signedIn && state.onboardingStep == 3 { state.onboardingStep = 4 }
+            if !signedIn && state.onboardingStep > 3 { state.onboardingStep = 3 }
+        }
+        // Check for app updates on launch and every time the app returns to the foreground.
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            if phase == .active { updates.check() }
+        }
     }
 }
 
@@ -29,6 +47,9 @@ struct OnboardingHost: View {
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             case 2:
                 LanguageScreen()
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            case 3:
+                AuthFlowView()
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             default:
                 ServiceScreen()
@@ -292,6 +313,7 @@ struct TPPulseMark: View {
 
 struct LanguageScreen: View {
     @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var auth: AuthStore
 
     var body: some View {
         VStack(spacing: 0) {
@@ -321,11 +343,11 @@ struct LanguageScreen: View {
             HStack(spacing: 16) {
                 LanguageCard(title: "English", subtitle: "Smarter tax simplified", code: "EN", selected: state.language == .english) {
                     state.language = .english
-                    state.onboardingStep = 3
+                    state.onboardingStep = auth.isSignedIn ? 4 : 3
                 }
                 LanguageCard(title: "العربية", subtitle: "الضرائب الذكية مبسطة لأجلك", code: "AR", selected: state.language == .arabic) {
                     state.language = .arabic
-                    state.onboardingStep = 3
+                    state.onboardingStep = auth.isSignedIn ? 4 : 3
                 }
             }
             .environment(\.layoutDirection, .leftToRight)
@@ -415,6 +437,8 @@ struct CalculatorShell: View {
 
 struct HeaderView: View {
     @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var auth: AuthStore
+    @State private var showAccount = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -432,9 +456,17 @@ struct HeaderView: View {
                     .lineLimit(1)
             }
             Spacer()
+            if let session = auth.session {
+                AccountHeaderButton(email: session.email) { showAccount = true }
+            }
             LanguageSegmentedControl(selected: state.language.rawValue) { key in
                 state.language = key == "AR" ? .arabic : .english
             }
+        }
+        .sheet(isPresented: $showAccount) {
+            AccountSheet()
+                .environmentObject(state)
+                .environmentObject(auth)
         }
     }
 }
@@ -461,7 +493,7 @@ struct ActiveServiceBanner: View {
             }
             Spacer()
             Button(Copy.t("changeService", state.language)) {
-                state.onboardingStep = 3
+                state.onboardingStep = 4
             }
             .font(.app(12, weight: .black))
             .foregroundStyle(Color.blueAccent)

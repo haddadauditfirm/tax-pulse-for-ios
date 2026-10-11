@@ -10,6 +10,9 @@
 		8E6C7F1E2D5A4B6C8F0A1001 /* TaxPulseIOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A1001 /* TaxPulseIOSApp.swift */; };
 		8E6C7F1E2D5A4B6C8F0A1002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A1002 /* ContentView.swift */; };
 		8E6C7F1E2D5A4B6C8F0A1003 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A1003 /* AppState.swift */; };
+		A1B2C3D4E5F6A7B8C9D0E201 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E101 /* AuthService.swift */; };
+		A1B2C3D4E5F6A7B8C9D0E202 /* AuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E102 /* AuthStore.swift */; };
+		A1B2C3D4E5F6A7B8C9D0E203 /* AuthViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E103 /* AuthViews.swift */; };
 		8E6C7F1E2D5A4B6C8F0A1004 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A1004 /* Models.swift */; };
 		8E6C7F1E2D5A4B6C8F0A1005 /* PayrollEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A1005 /* PayrollEngine.swift */; };
 		8E6C7F1E2D5A4B6C8F0A1006 /* TaxEngines.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A1006 /* TaxEngines.swift */; };
@@ -36,6 +39,9 @@
 		8E6C7F1D2D5A4B6C8F0A1001 /* TaxPulseIOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaxPulseIOSApp.swift; sourceTree = "<group>"; };
 		8E6C7F1D2D5A4B6C8F0A1002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		8E6C7F1D2D5A4B6C8F0A1003 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6A7B8C9D0E101 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6A7B8C9D0E102 /* AuthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthStore.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6A7B8C9D0E103 /* AuthViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViews.swift; sourceTree = "<group>"; };
 		8E6C7F1D2D5A4B6C8F0A1004 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		8E6C7F1D2D5A4B6C8F0A1005 /* PayrollEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayrollEngine.swift; sourceTree = "<group>"; };
 		8E6C7F1D2D5A4B6C8F0A1006 /* TaxEngines.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaxEngines.swift; sourceTree = "<group>"; };
@@ -79,6 +85,9 @@
 				8E6C7F1D2D5A4B6C8F0A1001 /* TaxPulseIOSApp.swift */,
 				8E6C7F1D2D5A4B6C8F0A1002 /* ContentView.swift */,
 				8E6C7F1D2D5A4B6C8F0A1003 /* AppState.swift */,
+				A1B2C3D4E5F6A7B8C9D0E101 /* AuthService.swift */,
+				A1B2C3D4E5F6A7B8C9D0E102 /* AuthStore.swift */,
+				A1B2C3D4E5F6A7B8C9D0E103 /* AuthViews.swift */,
 				8E6C7F1D2D5A4B6C8F0A1004 /* Models.swift */,
 				8E6C7F1D2D5A4B6C8F0A1005 /* PayrollEngine.swift */,
 				8E6C7F1D2D5A4B6C8F0A1006 /* TaxEngines.swift */,
@@ -209,6 +218,9 @@
 				8E6C7F1E2D5A4B6C8F0A1001 /* TaxPulseIOSApp.swift in Sources */,
 				8E6C7F1E2D5A4B6C8F0A1002 /* ContentView.swift in Sources */,
 				8E6C7F1E2D5A4B6C8F0A1003 /* AppState.swift in Sources */,
+				A1B2C3D4E5F6A7B8C9D0E201 /* AuthService.swift in Sources */,
+				A1B2C3D4E5F6A7B8C9D0E202 /* AuthStore.swift in Sources */,
+				A1B2C3D4E5F6A7B8C9D0E203 /* AuthViews.swift in Sources */,
 				8E6C7F1E2D5A4B6C8F0A1004 /* Models.swift in Sources */,
 				8E6C7F1E2D5A4B6C8F0A1005 /* PayrollEngine.swift in Sources */,
 				8E6C7F1E2D5A4B6C8F0A1006 /* TaxEngines.swift in Sources */,
