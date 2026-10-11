@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 /// A branded Tax Pulse modal currently on screen, if any. Hosted once at the
 /// calculator shell (`AppModalHost`) rather than per-tab, so only one can show
@@ -18,13 +19,30 @@ enum AppModal: Identifiable, Equatable {
 final class AppState: ObservableObject {
     static let minimumPenaltyYear = 2024
     @Published var activeModal: AppModal?
+    @Published var tutorialTopic: TutorialTopic?
     /// DEBUG-only: makes result cards render on launch so QA can screenshot them.
     @Published var debugPreCalculated = false
     /// DEBUG-only: hides the input cards so a result card can be captured on screen.
     @Published var debugResultOnly = false
-    @Published var onboardingStep = 1
+    @Published var navigationForward = true
+    @Published var onboardingStep = 1 {
+        willSet { navigationForward = newValue >= onboardingStep }
+    }
+    @Published var payrollReverseMode = false
     @Published var selectedTab: ServiceTab = .payroll
     @Published var language: AppLanguage = .english
+
+    @Published var reverseNetTargetLbp = ""
+    @Published var reverseNetTargetUsd = ""
+    var reverseNetTarget: String {
+        get { payrollCurrency == .usd ? reverseNetTargetUsd : reverseNetTargetLbp }
+        set {
+            if payrollCurrency == .usd { reverseNetTargetUsd = newValue }
+            else { reverseNetTargetLbp = newValue }
+        }
+    }
+    @Published var reverseWorkingDays = ""
+    @Published var reverseIncludeFamily = true
 
     @Published var salaryPeriod: SalaryPeriod = .monthly
     @Published var employmentType: EmploymentType = .monthly
@@ -50,6 +68,29 @@ final class AppState: ObservableObject {
     @Published var profitMarital: MaritalStatus = .single
     @Published var profitChildren = 0
     @Published var profitOwnerName = ""
+
+    @Published var propertyYear = [2025, 2026].contains(UserDefaults.standard.integer(forKey: "propertyYear"))
+        ? UserDefaults.standard.integer(forKey: "propertyYear") : 2025 {
+        didSet { defaults.set(propertyYear, forKey: "propertyYear") }
+    }
+    @Published var propertyRevenue = UserDefaults.standard.string(forKey: "propertyRevenue") ?? "" {
+        didSet { defaults.set(propertyRevenue, forKey: "propertyRevenue") }
+    }
+    @Published var propertyDeduction = UserDefaults.standard.string(forKey: "propertyDeduction") ?? "" {
+        didSet { defaults.set(propertyDeduction, forKey: "propertyDeduction") }
+    }
+    @Published var propertyCurrency = CurrencyMode(rawValue: UserDefaults.standard.string(forKey: "propertyCurrency") ?? "LBP") ?? .lbp {
+        didSet { defaults.set(propertyCurrency.rawValue, forKey: "propertyCurrency") }
+    }
+    @Published var propertyRevenueUsd = UserDefaults.standard.string(forKey: "propertyRevenueUsd") ?? "" {
+        didSet { defaults.set(propertyRevenueUsd, forKey: "propertyRevenueUsd") }
+    }
+    @Published var propertyDeductionUsd = UserDefaults.standard.string(forKey: "propertyDeductionUsd") ?? "" {
+        didSet { defaults.set(propertyDeductionUsd, forKey: "propertyDeductionUsd") }
+    }
+    @Published var propertyExchangeRate = UserDefaults.standard.string(forKey: "propertyExchangeRate") ?? "" {
+        didSet { defaults.set(propertyExchangeRate, forKey: "propertyExchangeRate") }
+    }
 
     @Published var penaltyCompanyType = "SAL"
     @Published var penaltyTaxType = "PAYROLL"
@@ -104,6 +145,7 @@ final class AppState: ObservableObject {
             case "profit": selectedTab = .profit
             case "penalties": selectedTab = .penalties
             case "extensions": selectedTab = .extensions
+            case "property": selectedTab = .property
             default: break
             }
         }
@@ -216,11 +258,15 @@ final class AppState: ObservableObject {
     }
 
     func chooseService(_ tab: ServiceTab) {
+        if selectedTab != tab { payrollReverseMode = false }
         selectedTab = tab
         onboardingStep = 4
     }
 
     func resetPayroll() {
+        payrollReverseMode = false
+        reverseNetTargetLbp = ""; reverseNetTargetUsd = ""
+        reverseWorkingDays = ""; reverseIncludeFamily = true
         salaryPeriod = .monthly
         employmentType = .monthly
         payrollCurrency = .lbp
@@ -237,6 +283,16 @@ final class AppState: ObservableObject {
         useFamilyRebates = true
         sicknessCeilingOverride = ""
         familyCeilingOverride = ""
+    }
+
+    func resetPropertyTax() {
+        propertyYear = 2025
+        propertyRevenue = ""
+        propertyDeduction = ""
+        propertyCurrency = .lbp
+        propertyRevenueUsd = ""
+        propertyDeductionUsd = ""
+        propertyExchangeRate = ""
     }
 
     /// Full reset for the Tax Penalties tab: every numeric/date field returns to its

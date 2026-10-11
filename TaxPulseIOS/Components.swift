@@ -384,15 +384,18 @@ struct LanguageSegmentedControl: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            LanguageGlobe(size: 18)
+                .foregroundStyle(Color.blueAccent).padding(.horizontal, 6)
             ForEach(options, id: \.0) { key, title in
                 let isSelected = selected == key
                 Button {
                     onSelect(key)
                 } label: {
                     Text(title)
-                        .font(.app(14, weight: .black))
-                        .foregroundStyle(isSelected ? Color.white : Color.navyPrimary)
-                        .frame(width: 70, height: 42)
+                        .font(.app(11, weight: .bold))
+                        .foregroundStyle(isSelected ? Color.white : Color.slateTextLight)
+                        .frame(minWidth: 48, minHeight: 42)
+                        .padding(.horizontal, 6)
                         .background(isSelected ? Color.blueAccent : Color.clear)
                         .clipShape(Capsule())
                 }
@@ -1155,5 +1158,49 @@ struct AppModalHost: View {
                 secondaryAction: { state.activeModal = nil }
             )
         }
+    }
+}
+
+
+struct LanguageGlobe: View {
+    var size: CGFloat = 18
+    var tint: Color = .blueAccent
+
+    var body: some View {
+        Image(systemName: "globe")
+            .font(.app(size, weight: .regular))
+            .foregroundStyle(tint)
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
+    }
+}
+
+struct TutorialBookIcon: View {
+    var body: some View {
+        Image("TutorialBook")
+            .renderingMode(.original)
+            .resizable()
+            .scaledToFit()
+            .accessibilityHidden(true)
+    }
+}
+
+struct TutorialHelpButton: View {
+    @EnvironmentObject private var state: AppState
+    let onOpen: () -> Void
+
+    var body: some View {
+        Button {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            onOpen()
+        } label: {
+            TutorialBookIcon()
+                .frame(width: 30, height: 30)
+                .frame(width: 48, height: 48)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(state.language == .arabic ? "كيفية استخدام التطبيق" : "How to use the app")
+        .accessibilityIdentifier("tutorial_open")
     }
 }

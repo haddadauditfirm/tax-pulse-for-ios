@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        8E6C7F1E2D5A4B6C8F0A1012 /* PropertyTaxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A1012 /* PropertyTaxView.swift */; };
 		8E6C7F1E2D5A4B6C8F0A1001 /* TaxPulseIOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A1001 /* TaxPulseIOSApp.swift */; };
 		8E6C7F1E2D5A4B6C8F0A1002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A1002 /* ContentView.swift */; };
 		8E6C7F1E2D5A4B6C8F0A1003 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A1003 /* AppState.swift */; };
@@ -16,8 +17,12 @@
 		8E6C7F1E2D5A4B6C8F0A1007 /* Design.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A1007 /* Design.swift */; };
 		8E6C7F1E2D5A4B6C8F0A1008 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A1008 /* Components.swift */; };
 		8E6C7F1E2D5A4B6C8F0A1009 /* LocalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A1009 /* LocalStore.swift */; };
+		8E6C7F1E2D5A4B6C8F0A1010 /* TutorialView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A1010 /* TutorialView.swift */; };
+		8E6C7F1E2D5A4B6C8F0A1011 /* WelcomeScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A1011 /* WelcomeScreen.swift */; };
 		8E6C7F1E2D5A4B6C8F0A2001 /* PayrollEngineParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A2001 /* PayrollEngineParityTests.swift */; };
 		8E6C7F1E2D5A4B6C8F0A3001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A3001 /* Assets.xcassets */; };
+        8E6C7F1E2D5A4B6C8F0A1013 /* ReversePayrollEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A1013 /* ReversePayrollEngine.swift */; };
+        8E6C7F1E2D5A4B6C8F0A1014 /* ReversePayrollView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A1014 /* ReversePayrollView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -31,6 +36,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+        8E6C7F1D2D5A4B6C8F0A1012 /* PropertyTaxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PropertyTaxView.swift; sourceTree = "<group>"; };
 		8E6C7F1A2D5A4B6C8F0A1000 /* TaxPulseIOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TaxPulseIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8E6C7F1A2D5A4B6C8F0A2000 /* TaxPulseIOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TaxPulseIOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8E6C7F1D2D5A4B6C8F0A1001 /* TaxPulseIOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaxPulseIOSApp.swift; sourceTree = "<group>"; };
@@ -42,8 +48,12 @@
 		8E6C7F1D2D5A4B6C8F0A1007 /* Design.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Design.swift; sourceTree = "<group>"; };
 		8E6C7F1D2D5A4B6C8F0A1008 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
 		8E6C7F1D2D5A4B6C8F0A1009 /* LocalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalStore.swift; sourceTree = "<group>"; };
+		8E6C7F1D2D5A4B6C8F0A1010 /* TutorialView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialView.swift; sourceTree = "<group>"; };
+		8E6C7F1D2D5A4B6C8F0A1011 /* WelcomeScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeScreen.swift; sourceTree = "<group>"; };
 		8E6C7F1D2D5A4B6C8F0A2001 /* PayrollEngineParityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayrollEngineParityTests.swift; sourceTree = "<group>"; };
 		8E6C7F1D2D5A4B6C8F0A3001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+        8E6C7F1D2D5A4B6C8F0A1013 /* ReversePayrollEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReversePayrollEngine.swift; sourceTree = "<group>"; };
+        8E6C7F1D2D5A4B6C8F0A1014 /* ReversePayrollView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReversePayrollView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -85,6 +95,11 @@
 				8E6C7F1D2D5A4B6C8F0A1007 /* Design.swift */,
 				8E6C7F1D2D5A4B6C8F0A1008 /* Components.swift */,
 				8E6C7F1D2D5A4B6C8F0A1009 /* LocalStore.swift */,
+				8E6C7F1D2D5A4B6C8F0A1010 /* TutorialView.swift */,
+                8E6C7F1D2D5A4B6C8F0A1011 /* WelcomeScreen.swift */,
+                8E6C7F1D2D5A4B6C8F0A1013 /* ReversePayrollEngine.swift */,
+                8E6C7F1D2D5A4B6C8F0A1014 /* ReversePayrollView.swift */,
+                8E6C7F1D2D5A4B6C8F0A1012 /* PropertyTaxView.swift */,
 				8E6C7F1D2D5A4B6C8F0A3001 /* Assets.xcassets */,
 			);
 			path = TaxPulseIOS;
@@ -215,6 +230,11 @@
 				8E6C7F1E2D5A4B6C8F0A1007 /* Design.swift in Sources */,
 				8E6C7F1E2D5A4B6C8F0A1008 /* Components.swift in Sources */,
 				8E6C7F1E2D5A4B6C8F0A1009 /* LocalStore.swift in Sources */,
+				8E6C7F1E2D5A4B6C8F0A1010 /* TutorialView.swift in Sources */,
+                8E6C7F1E2D5A4B6C8F0A1011 /* WelcomeScreen.swift in Sources */,
+                8E6C7F1E2D5A4B6C8F0A1013 /* ReversePayrollEngine.swift in Sources */,
+                8E6C7F1E2D5A4B6C8F0A1014 /* ReversePayrollView.swift in Sources */,
+                8E6C7F1E2D5A4B6C8F0A1012 /* PropertyTaxView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
