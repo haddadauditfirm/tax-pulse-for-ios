@@ -1,7 +1,12 @@
 import SwiftUI
 
+/// Steps: 1 welcome → 2 language → 3 sign in (skipped when signed in) → 4 service → 5 app.
 struct ContentView: View {
     @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var auth: AuthStore
+    @EnvironmentObject private var updates: UpdateStore
+    @EnvironmentObject private var remoteConfig: RemoteConfigStore
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -26,6 +31,23 @@ struct ContentView: View {
         }
         .environment(\.layoutDirection, state.language == .arabic ? .rightToLeft : .leftToRight)
         .preferredColorScheme(state.tutorialTopic != nil ? .light : state.onboardingStep == 1 ? .dark : nil)
+        .overlay { AppUpdateHost() }
+        // Signing in moves on to the service chooser; signing out (or deleting the
+        // account) from anywhere past the gate returns to the sign-in screen.
+        .onChange(of: auth.isSignedIn) { _, signedIn in
+            if signedIn && state.onboardingStep == 3 { state.onboardingStep = 4 }
+            if !signedIn && state.onboardingStep > 3 { state.onboardingStep = 3 }
+        }
+        // Check for app updates and Remote Config values on launch and every time
+        // the app returns to the foreground.
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            guard phase == .active else { return }
+            updates.check()
+            remoteConfig.fetch()
+        }
+        .onChange(of: remoteConfig.values, initial: true) { _, _ in
+            state.officialExtendedDueDate = remoteConfig.extendedDueDate
+        }
     }
 
     private func tutorialTransition(travel: CGFloat) -> AnyTransition {
@@ -87,6 +109,10 @@ struct OnboardingHost: View {
                         .zIndex(1)
                         .transition(navigationTransition(travel: geometry.size.width))
                 case 3:
+                    AuthFlowView()
+                        .zIndex(1)
+                        .transition(navigationTransition(travel: geometry.size.width))
+                case 4:
                     ServiceScreen()
                         .zIndex(1)
                         .transition(navigationTransition(travel: geometry.size.width))
@@ -131,6 +157,7 @@ private struct OnboardingSlideModifier: ViewModifier, Animatable {
 
 struct LanguageScreen: View {
     @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var auth: AuthStore
 
     var body: some View {
         VStack(spacing: 0) {
@@ -158,11 +185,11 @@ struct LanguageScreen: View {
             HStack(spacing: 16) {
                 LanguageCard(title: "English", subtitle: "Smarter tax simplified", code: "EN", selected: state.language == .english) {
                     state.language = .english
-                    state.onboardingStep = 3
+                    state.onboardingStep = auth.isSignedIn ? 4 : 3
                 }
                 LanguageCard(title: "العربية", subtitle: "الضرائب الذكية مبسطة لأجلك", code: "AR", selected: state.language == .arabic) {
                     state.language = .arabic
-                    state.onboardingStep = 3
+                    state.onboardingStep = auth.isSignedIn ? 4 : 3
                 }
             }
             .environment(\.layoutDirection, .leftToRight)
@@ -303,6 +330,8 @@ struct CalculatorShell: View {
 
 struct HeaderView: View {
     @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var auth: AuthStore
+    @State private var showAccount = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -315,6 +344,9 @@ struct HeaderView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                if let session = auth.session {
+                    AccountHeaderButton(email: session.email) { showAccount = true }
+                }
                 TutorialHelpButton {
                     state.tutorialTopic = state.selectedTab == .payroll && state.payrollReverseMode
                         ? .reversePayroll : TutorialTopic.forService(state.selectedTab)
@@ -331,6 +363,11 @@ struct HeaderView: View {
             }
         }
         .accessibilityIdentifier("calculator_header")
+        .sheet(isPresented: $showAccount) {
+            AccountSheet()
+                .environmentObject(state)
+                .environmentObject(auth)
+        }
     }
 }
 
@@ -356,7 +393,7 @@ struct ActiveServiceBanner: View {
             }
             Spacer()
             Button(Copy.t("changeService", state.language)) {
-                state.onboardingStep = 3
+                state.onboardingStep = 4
             }
             .font(.app(12, weight: .black))
             .foregroundStyle(Color.blueAccent)
@@ -1354,10 +1391,13 @@ struct PenaltyResultCard: View {
 
 struct ExtensionsCalculatorTab: View {
     @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var remoteConfig: RemoteConfigStore
 
     var body: some View {
         VStack(spacing: 16) {
             SectionIntro(title: Copy.t("extensionsIntroTitle", state.language), bodyText: Copy.t("extensionsIntroBody", state.language))
+                // Opening this tab always pulls the latest extended due date from Firebase.
+                .onAppear { remoteConfig.fetch(force: true) }
 
             AppCard {
                 Text(Copy.t("selectExtensionTaxType", state.language))
@@ -1433,10 +1473,9 @@ struct ExtensionsCalculatorTab: View {
                 .background(Color.slateLight)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.slateBorder, lineWidth: 1))
+                // Read-only: the official date is published in Firebase Remote Config.
                 DateFields(title: Copy.t("officialExtendedDate", state.language), day: $state.extensionDay, month: $state.extensionMonth, year: $state.extensionYearValue)
-                PrimaryActionButton(title: Copy.t("saveExtension", state.language), systemImage: "checkmark.circle.fill", color: .navyPrimary, cornerRadius: 12, iconOnLeading: true) {
-                    state.handleSaveExtensionTap()
-                }
+                    .allowsHitTesting(false)
             }
 
             AppCard {
