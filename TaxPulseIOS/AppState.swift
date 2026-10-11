@@ -73,6 +73,10 @@ final class AppState: ObservableObject {
     @Published var extensionMonth = "4"
     @Published var extensionYearValue = "2026"
     @Published var extensionMessage: String?
+    /// Official extended due date published in Firebase Remote Config (`extended_due_date`).
+    var officialExtendedDueDate: ExtensionDateParts? {
+        didSet { syncExtensionDate() }
+    }
     @Published private(set) var users: [UserRecord] = DemoSeed.users
     @Published private(set) var companies: [CompanyRecord] = DemoSeed.companies
     @Published private(set) var employees: [EmployeeRecord] = DemoSeed.employees
@@ -351,20 +355,13 @@ final class AppState: ObservableObject {
         penaltyDueYear = "\(auto.year)"
     }
 
+    /// Shows the official extended due date published in Firebase, or the
+    /// statutory due date when none has been published.
     func syncExtensionDate() {
-        let auto = extensionAutoDate
-        if let savedValue = defaults.string(forKey: extensionKey), !savedValue.isEmpty {
-            let parts = savedValue.split(separator: "/").map(String.init)
-            if parts.count == 3 {
-                extensionDay = parts[0]
-                extensionMonth = parts[1]
-                extensionYearValue = parts[2]
-            }
-        } else {
-            extensionDay = "\(auto.day)"
-            extensionMonth = "\(auto.month)"
-            extensionYearValue = "\(auto.year)"
-        }
+        let date = officialExtendedDueDate ?? extensionAutoDate
+        extensionDay = "\(date.day)"
+        extensionMonth = "\(date.month)"
+        extensionYearValue = "\(date.year)"
         extensionMessage = nil
     }
 
@@ -392,8 +389,8 @@ final class AppState: ObservableObject {
     }
 
     func retrieveExtension() {
-        let key = extensionKey
-        if let value = defaults.string(forKey: key), !value.isEmpty {
+        if let date = officialExtendedDueDate {
+            let value = "\(date.day)/\(date.month)/\(date.year)"
             extensionMessage = language == .arabic ? "المهلة الرسمية المسجلة هي: \(value)" : "The official registered extended deadline is: \(value)"
         } else {
             extensionMessage = language == .arabic ? "لا توجد مهلة مسجلة بعد." : "No registered deadline extensions found yet."

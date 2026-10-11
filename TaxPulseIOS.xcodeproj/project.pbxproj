@@ -13,6 +13,7 @@
 		A1B2C3D4E5F6A7B8C9D0E201 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E101 /* AuthService.swift */; };
 		A1B2C3D4E5F6A7B8C9D0E202 /* AuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E102 /* AuthStore.swift */; };
 		A1B2C3D4E5F6A7B8C9D0E203 /* AuthViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E103 /* AuthViews.swift */; };
+		A1B2C3D4E5F6A7B8C9D0E204 /* RemoteConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E104 /* RemoteConfig.swift */; };
 		8E6C7F1E2D5A4B6C8F0A1004 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A1004 /* Models.swift */; };
 		8E6C7F1E2D5A4B6C8F0A1005 /* PayrollEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A1005 /* PayrollEngine.swift */; };
 		8E6C7F1E2D5A4B6C8F0A1006 /* TaxEngines.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6C7F1D2D5A4B6C8F0A1006 /* TaxEngines.swift */; };
@@ -42,6 +43,7 @@
 		A1B2C3D4E5F6A7B8C9D0E101 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6A7B8C9D0E102 /* AuthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthStore.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6A7B8C9D0E103 /* AuthViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViews.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6A7B8C9D0E104 /* RemoteConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteConfig.swift; sourceTree = "<group>"; };
 		8E6C7F1D2D5A4B6C8F0A1004 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		8E6C7F1D2D5A4B6C8F0A1005 /* PayrollEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayrollEngine.swift; sourceTree = "<group>"; };
 		8E6C7F1D2D5A4B6C8F0A1006 /* TaxEngines.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaxEngines.swift; sourceTree = "<group>"; };
@@ -88,6 +90,7 @@
 				A1B2C3D4E5F6A7B8C9D0E101 /* AuthService.swift */,
 				A1B2C3D4E5F6A7B8C9D0E102 /* AuthStore.swift */,
 				A1B2C3D4E5F6A7B8C9D0E103 /* AuthViews.swift */,
+				A1B2C3D4E5F6A7B8C9D0E104 /* RemoteConfig.swift */,
 				8E6C7F1D2D5A4B6C8F0A1004 /* Models.swift */,
 				8E6C7F1D2D5A4B6C8F0A1005 /* PayrollEngine.swift */,
 				8E6C7F1D2D5A4B6C8F0A1006 /* TaxEngines.swift */,
@@ -221,6 +224,7 @@
 				A1B2C3D4E5F6A7B8C9D0E201 /* AuthService.swift in Sources */,
 				A1B2C3D4E5F6A7B8C9D0E202 /* AuthStore.swift in Sources */,
 				A1B2C3D4E5F6A7B8C9D0E203 /* AuthViews.swift in Sources */,
+				A1B2C3D4E5F6A7B8C9D0E204 /* RemoteConfig.swift in Sources */,
 				8E6C7F1E2D5A4B6C8F0A1004 /* Models.swift in Sources */,
 				8E6C7F1E2D5A4B6C8F0A1005 /* PayrollEngine.swift in Sources */,
 				8E6C7F1E2D5A4B6C8F0A1006 /* TaxEngines.swift in Sources */,

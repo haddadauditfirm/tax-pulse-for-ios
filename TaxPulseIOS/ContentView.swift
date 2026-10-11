@@ -5,6 +5,7 @@ struct ContentView: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var auth: AuthStore
     @EnvironmentObject private var updates: UpdateStore
+    @EnvironmentObject private var remoteConfig: RemoteConfigStore
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -26,9 +27,15 @@ struct ContentView: View {
             if signedIn && state.onboardingStep == 3 { state.onboardingStep = 4 }
             if !signedIn && state.onboardingStep > 3 { state.onboardingStep = 3 }
         }
-        // Check for app updates on launch and every time the app returns to the foreground.
+        // Check for app updates and Remote Config values on launch and every time
+        // the app returns to the foreground.
         .onChange(of: scenePhase, initial: true) { _, phase in
-            if phase == .active { updates.check() }
+            guard phase == .active else { return }
+            updates.check()
+            remoteConfig.fetch()
+        }
+        .onChange(of: remoteConfig.values, initial: true) { _, _ in
+            state.officialExtendedDueDate = remoteConfig.extendedDueDate
         }
     }
 }
@@ -1446,10 +1453,13 @@ struct PenaltyResultCard: View {
 
 struct ExtensionsCalculatorTab: View {
     @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var remoteConfig: RemoteConfigStore
 
     var body: some View {
         VStack(spacing: 16) {
             SectionIntro(title: Copy.t("extensionsIntroTitle", state.language), bodyText: Copy.t("extensionsIntroBody", state.language))
+                // Opening this tab always pulls the latest extended due date from Firebase.
+                .onAppear { remoteConfig.fetch(force: true) }
 
             AppCard {
                 Text(Copy.t("selectExtensionTaxType", state.language))
@@ -1525,10 +1535,9 @@ struct ExtensionsCalculatorTab: View {
                 .background(Color.slateLight)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.slateBorder, lineWidth: 1))
+                // Read-only: the official date is published in Firebase Remote Config.
                 DateFields(title: Copy.t("officialExtendedDate", state.language), day: $state.extensionDay, month: $state.extensionMonth, year: $state.extensionYearValue)
-                PrimaryActionButton(title: Copy.t("saveExtension", state.language), systemImage: "checkmark.circle.fill", color: .navyPrimary, cornerRadius: 12, iconOnLeading: true) {
-                    state.handleSaveExtensionTap()
-                }
+                    .allowsHitTesting(false)
             }
 
             AppCard {
