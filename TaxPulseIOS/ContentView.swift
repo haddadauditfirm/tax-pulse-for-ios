@@ -182,6 +182,7 @@ struct ServiceScreen: View {
                     serviceContents(columns: columns, compact: true, useList: true)
                 }
             }
+            .padding(.top, 8)
             .frame(width: width, height: max(geometry.size.height - 24, 0), alignment: .top)
             .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
         }
@@ -270,18 +271,18 @@ struct CalculatorShell: View {
                 }
                 .padding(16)
             }
-            .background(Color.slateLight.ignoresSafeArea())
+            // Dismiss on blank page space without attaching a tap recognizer over
+            // the fields and selectors. Dragging and the keypad Done button also dismiss.
+            .background {
+                Color.slateLight.ignoresSafeArea()
+                    .onTapGesture {
+                        UIApplication.shared.sendAction(
+                            #selector(UIResponder.resignFirstResponder),
+                            to: nil, from: nil, for: nil
+                        )
+                    }
+            }
             .scrollDismissesKeyboard(.interactively)
-            // Android dismisses the keyboard on any tap outside a field; mirror that
-            // without swallowing taps on the controls themselves.
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    UIApplication.shared.sendAction(
-                        #selector(UIResponder.resignFirstResponder),
-                        to: nil, from: nil, for: nil
-                    )
-                }
-            )
 
             // Branded modal host — year restriction, extension same-date warning,
             // extension saved. Mounted once here so any tab can trigger it.
@@ -329,8 +330,7 @@ struct ActiveServiceBanner: View {
     var body: some View {
         let meta = serviceMeta(state.selectedTab, language: state.language)
         HStack(spacing: 12) {
-            Image(systemName: meta.icon)
-                .font(.app(17, weight: .bold))
+            ServiceIcon(tab: state.selectedTab, systemName: meta.icon, size: 17)
                 .foregroundStyle(Color.white)
                 .frame(width: 36, height: 36)
                 .background(meta.color)
@@ -404,6 +404,7 @@ struct PayrollCalculatorTab: View {
                         state.salaryPeriod = $0 == "ANNUAL" ? .annual : .monthly
                         isCalculated = false
                     }
+                    .accessibilityIdentifier("payroll_salary_period")
                 }
 
                 Text(Copy.t("currency", state.language))
@@ -413,6 +414,7 @@ struct PayrollCalculatorTab: View {
                     state.payrollCurrency = $0 == "USD" ? .usd : .lbp
                     isCalculated = false
                 }
+                .accessibilityIdentifier("payroll_currency")
 
                 if state.payrollReverseMode {
                     ReversePayrollFields()
@@ -2180,8 +2182,7 @@ struct ServiceSelectionCard: View {
     }
 
     private func serviceIcon(_ meta: (title: String, description: String, icon: String, color: Color, gradient: [Color]), compact: Bool) -> some View {
-        Image(systemName: meta.icon)
-            .font(.app(compact ? 18 : 20, weight: .bold))
+        ServiceIcon(tab: tab, systemName: meta.icon, size: compact ? 18 : 20)
             .foregroundStyle(Color.white)
             .frame(width: compact ? 32 : 40, height: compact ? 32 : 40)
             .background(LinearGradient(colors: meta.gradient, startPoint: .topLeading, endPoint: .bottomTrailing))

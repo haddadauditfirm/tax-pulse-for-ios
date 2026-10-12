@@ -3,6 +3,48 @@ import SwiftUI
 import UIKit
 @testable import TaxPulseIOS
 
+final class InputAndIconRenderingTests: XCTestCase {
+    @MainActor
+    func testEmptyNumericFieldKeepsReadableHintsInBothLanguagesAndAppearanceModes() throws {
+        let expectedColor = UIColor(Color.slateTextLight)
+        for hint in ["Enter salary amount", "أدخل مبلغ الراتب"] {
+            for appearance in [UIUserInterfaceStyle.light, .dark] {
+                let host = UIHostingController(rootView: NumericTextField(
+                    text: .constant(""), placeholder: hint, decimal: true
+                ))
+                host.overrideUserInterfaceStyle = appearance
+                host.loadViewIfNeeded()
+                host.view.frame = CGRect(x: 0, y: 0, width: 320, height: 60)
+                host.view.layoutIfNeeded()
+                let field = try XCTUnwrap(findTextField(in: host.view))
+                XCTAssertEqual(field.attributedPlaceholder?.string, hint)
+                let color = try XCTUnwrap(field.attributedPlaceholder?.attribute(
+                    .foregroundColor, at: 0, effectiveRange: nil
+                ) as? UIColor)
+                XCTAssertEqual(color, expectedColor)
+                XCTAssertEqual(field.overrideUserInterfaceStyle, .light)
+                XCTAssertEqual(field.backgroundColor, .clear)
+            }
+        }
+    }
+
+    @MainActor
+    func testAndroidMatchingIconAssetsAreAvailableInTheAppBundle() {
+        for name in ["LanguageGlobe", "PayrollCalculator", "ReversePayrollWallet", "PropertyTax", "WelcomeBrand"] {
+            XCTAssertNotNil(UIImage(named: name), "Missing image asset: \(name)")
+        }
+    }
+
+    @MainActor
+    private func findTextField(in view: UIView) -> UITextField? {
+        if let field = view as? UITextField { return field }
+        for child in view.subviews {
+            if let field = findTextField(in: child) { return field }
+        }
+        return nil
+    }
+}
+
 final class PropertyTaxEngineTests: XCTestCase {
     private func decimal(_ value: String) -> Decimal { Decimal(string: value, locale: Locale(identifier: "en_US_POSIX"))! }
 

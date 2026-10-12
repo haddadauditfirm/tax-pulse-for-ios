@@ -206,16 +206,30 @@ private struct WelcomeBrandIcon: View {
 }
 
 private enum WelcomeLogoArtwork {
-    // Render once and retain the original RGB artwork; only the background alpha changes.
+    // Clamp the background mask before blending, so RGB colors never get divided
+    // by an alpha greater than one when Core Image exports premultiplied pixels.
     static let transparentImage: UIImage? = {
         guard let original = UIImage(named: "WelcomeBrand"), let input = CIImage(image: original),
               let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
-        let filter = CIFilter.colorMatrix()
-        filter.inputImage = input
-        filter.aVector = CIVector(x: -11, y: 11, z: 11, w: 0)
-        filter.biasVector = CIVector(x: 0, y: 0, z: 0, w: -2530.0 / 255.0)
+        let mask = CIFilter.colorMatrix()
+        mask.inputImage = input
+        let foreground = CIVector(x: -11, y: 11, z: 11, w: 0)
+        mask.rVector = foreground
+        mask.gVector = foreground
+        mask.bVector = foreground
+        mask.aVector = CIVector(x: 0, y: 0, z: 0, w: 1)
+        let threshold = -2530.0 / 255.0
+        mask.biasVector = CIVector(x: threshold, y: threshold, z: threshold, w: 0)
+        let clamp = CIFilter.colorClamp()
+        clamp.inputImage = mask.outputImage
+        clamp.minComponents = CIVector(x: 0, y: 0, z: 0, w: 0)
+        clamp.maxComponents = CIVector(x: 1, y: 1, z: 1, w: 1)
+        let cutout = CIFilter.blendWithMask()
+        cutout.inputImage = input
+        cutout.backgroundImage = CIImage(color: .clear).cropped(to: input.extent)
+        cutout.maskImage = clamp.outputImage
         let context = CIContext(options: [.workingColorSpace: colorSpace, .outputColorSpace: colorSpace])
-        guard let output = filter.outputImage,
+        guard let output = cutout.outputImage,
               let rendered = context.createCGImage(output, from: input.extent, format: .RGBA8, colorSpace: colorSpace)
         else { return nil }
         return UIImage(cgImage: rendered, scale: original.scale, orientation: original.imageOrientation)
