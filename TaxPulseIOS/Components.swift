@@ -1207,11 +1207,14 @@ struct ServiceIcon: View {
 }
 
 struct TutorialBookIcon: View {
+    var tint: Color = .blueAccent
+
     var body: some View {
         Image("TutorialBook")
-            .renderingMode(.original)
+            .renderingMode(.template)
             .resizable()
             .scaledToFit()
+            .foregroundStyle(tint)
             .accessibilityHidden(true)
     }
 }
