@@ -183,7 +183,7 @@ struct ServiceScreen: View {
                 }
             }
             .padding(.top, 8)
-            .frame(width: width, height: max(geometry.size.height - 24, 0), alignment: .top)
+            .frame(width: width, height: max(geometry.size.height - 24, 0), alignment: .center)
             .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
         }
     }
