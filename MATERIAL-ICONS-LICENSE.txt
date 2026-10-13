@@ -1,6 +1,6 @@
 Material app icons
 
-LanguageGlobe, PayrollCalculator and ReversePayrollWallet are from Google Material Design Icons:
+LanguageGlobe and PayrollCalculator are from Google Material Design Icons:
 https://github.com/google/material-design-icons
 
 PropertyTax contains the same HomeWork path geometry as AndroidX Compose Material Icons,

@@ -30,7 +30,7 @@ final class InputAndIconRenderingTests: XCTestCase {
 
     @MainActor
     func testAndroidMatchingIconAssetsAreAvailableInTheAppBundle() {
-        for name in ["LanguageGlobe", "PayrollCalculator", "ReversePayrollWallet", "PropertyTax", "WelcomeBrand"] {
+        for name in ["LanguageGlobe", "PayrollCalculator", "ReversePayrollCalculator", "PropertyTax", "WelcomeBrand"] {
             XCTAssertNotNil(UIImage(named: name), "Missing image asset: \(name)")
         }
     }

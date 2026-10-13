@@ -449,7 +449,7 @@ struct PayrollCalculationModeSelector: View {
                 HStack {
                     Group {
                         if isReverse {
-                            Image("ReversePayrollWallet")
+                            Image("ReversePayrollCalculator")
                                 .renderingMode(.template)
                                 .resizable()
                                 .scaledToFit()
