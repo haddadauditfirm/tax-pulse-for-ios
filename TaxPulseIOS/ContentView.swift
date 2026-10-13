@@ -168,46 +168,38 @@ struct ServiceScreen: View {
     @ScaledMetric(relativeTo: .subheadline) private var subtitleSize: CGFloat = 13
 
     var body: some View {
-        GeometryReader { geometry in
-            let width = min(max(geometry.size.width - 32, 0), 720)
-            let columns = width >= 600 ? 3 : 2
-            ViewThatFits(in: .vertical) {
-                serviceContents(columns: columns, compact: false, useList: false)
-                    .fixedSize(horizontal: false, vertical: true)
-                serviceContents(columns: columns, compact: true, useList: true)
-                    .fixedSize(horizontal: false, vertical: true)
-                serviceContents(columns: columns, compact: true, useList: false)
-                    .fixedSize(horizontal: false, vertical: true)
-                ScrollView {
+        VStack(spacing: 0) {
+            TopBackButton { state.onboardingStep = 2 }
+                .padding(.horizontal, 24)
+            GeometryReader { geometry in
+                let width = min(max(geometry.size.width - 32, 0), 720)
+                let columns = width >= 600 ? 3 : 2
+                ViewThatFits(in: .vertical) {
+                    serviceContents(columns: columns, compact: false, useList: false)
+                        .fixedSize(horizontal: false, vertical: true)
                     serviceContents(columns: columns, compact: true, useList: true)
+                        .fixedSize(horizontal: false, vertical: true)
+                    serviceContents(columns: columns, compact: true, useList: false)
+                        .fixedSize(horizontal: false, vertical: true)
+                    ScrollView {
+                        serviceContents(columns: columns, compact: true, useList: true)
+                    }
                 }
+                .padding(.top, 8)
+                .frame(width: width, height: max(geometry.size.height - 24, 0), alignment: .center)
+                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
             }
-            .padding(.top, 8)
-            .frame(width: width, height: max(geometry.size.height - 24, 0), alignment: .center)
-            .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
         }
     }
 
     private func serviceContents(columns: Int, compact: Bool, useList: Bool) -> some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Button { state.onboardingStep = 2 } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.app(16, weight: .black))
-                        .foregroundStyle(Color.white)
-                        .frame(width: 48, height: 48)
-                        .background(Color.white.opacity(0.08), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(state.language == .arabic ? "رجوع" : "Back")
-                Text(state.language == .arabic ? "اختر نوع الخدمة المطلوبة" : "Choose your service")
-                    .font(.app(compact ? compactTitleSize : titleSize, weight: .heavy))
-                    .foregroundStyle(Color.white)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity)
-            }
-            .environment(\.layoutDirection, .leftToRight)
+            Text(state.language == .arabic ? "اختر نوع الخدمة المطلوبة" : "Choose your service")
+                .font(.app(compact ? compactTitleSize : titleSize, weight: .heavy))
+                .foregroundStyle(Color.white)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
             if !compact {
                 Text(state.language == .arabic ? "انقر على إحدى الخدمات للبدء الفوري بحساباتك" : "Select a service below to jump straight in")
                     .font(.app(subtitleSize))
