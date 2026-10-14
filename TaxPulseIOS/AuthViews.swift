@@ -40,7 +40,7 @@ enum AuthCopy {
         "saveFailed": ("Couldn't save. Check your connection.", "تعذر الحفظ. تحقق من الاتصال."),
         "signOut": ("Sign out", "تسجيل الخروج"),
         "signOutTitle": ("Sign out?", "تسجيل الخروج؟"),
-        "signOutMsg": ("You'll need a new email code to sign back in.", "ستحتاج إلى رمز جديد عبر البريد للدخول مجدداً."),
+        "signOutMsg": ("Are you sure you want to sign out?", "هل أنت متأكد أنك تريد تسجيل الخروج؟"),
         "deleteAccount": ("Delete account", "حذف الحساب"),
         "deleteTitle": ("Delete your account?", "حذف حسابك؟"),
         "deleteMsg": ("This permanently deletes your Tax Pulse account and profile. This can't be undone.",
