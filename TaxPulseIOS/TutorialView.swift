@@ -159,7 +159,7 @@ struct TutorialLink: View {
             onOpen()
         } label: {
             HStack(spacing: 8) {
-                TutorialBookIcon()
+                TutorialBookIcon(tint: onDarkBackground ? Color(hex: 0x93C5FD) : .blueAccent)
                     .frame(width: 22, height: 22)
                 Text(TutorialContent.label("link", state.language))
             }

@@ -210,7 +210,10 @@ private struct ReversePayrollCurrency: View {
                             .background(usd == dollar ? Color.navyPrimary : Color.white)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                             .overlay(RoundedRectangle(cornerRadius: 10).stroke(usd == dollar ? Color.navyPrimary : Color.slateBorder, lineWidth: 1))
-                    }.buttonStyle(.plain).accessibilityIdentifier(dollar ? "reverse_display_usd" : "reverse_display_lbp")
+                            .contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                        .accessibilityAddTraits(usd == dollar ? .isSelected : [])
+                        .accessibilityIdentifier(dollar ? "reverse_display_usd" : "reverse_display_lbp")
                 }
             }
             Text("\u{2066}1 USD = 89,500 LBP\u{2069}").font(.app(10)).foregroundStyle(Color.slateTextLight)
@@ -300,8 +303,10 @@ struct ReversePayrollFields: View {
                             .background(state.reverseWorkingDays == String(days) ? Color.blueAccent.opacity(0.08) : Color.clear)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                             .overlay(RoundedRectangle(cornerRadius: 10).stroke(state.reverseWorkingDays == String(days) ? Color.blueAccent : Color.slateBorder, lineWidth: 1))
+                            .contentShape(Rectangle())
                     }.buttonStyle(.plain)
                         .accessibilityIdentifier("reverse_days_\(days)")
+                        .accessibilityAddTraits(state.reverseWorkingDays == String(days) ? .isSelected : [])
                 }
             }
             Text(label("daysHint")).font(.app(10)).foregroundStyle(Color.slateTextLight).fixedSize(horizontal: false, vertical: true)
@@ -442,8 +447,19 @@ struct PayrollCalculationModeSelector: View {
         return Button { onSelect(isReverse) } label: {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Image(systemName: isReverse ? "arrow.left.arrow.right" : "calculator")
-                        .font(.app(20)).foregroundStyle(Color.blueAccent)
+                    Group {
+                        if isReverse {
+                            Image("ReversePayrollCalculator")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                        } else {
+                            CalculatorIcon(color: .blueAccent)
+                        }
+                    }
+                    .foregroundStyle(Color.blueAccent)
+                    .frame(width: 20, height: 20)
+                    .accessibilityHidden(true)
                     Spacer()
                     if active {
                         Image(systemName: "checkmark.circle.fill")
