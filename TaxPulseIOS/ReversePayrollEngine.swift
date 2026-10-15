@@ -32,13 +32,24 @@ enum ReversePayrollEngine {
         return days
     }
 
+    static func dailyTransportation(_ raw: String) -> Double? {
+        guard let amount = PropertyTaxEngine.parseAmount(raw) else { return nil }
+        let value = NSDecimalNumber(decimal: amount).doubleValue
+        return value.isFinite && value >= 0 && value <= maximumLbp ? value : nil
+    }
+
     /// Use forward deductions, not binary search: rounded tax makes net pay discontinuous.
     static func calculate(targetLbp: Double, workingDays: Int, usd: Bool,
                           includeFamilyBenefits: Bool = true,
-                          forward: (Double) -> PayrollItem) -> ReversePayrollResult? {
+                          forward: (Double) -> PayrollItem,
+                          dailyTransportationLbp: Double = dailyTransportLbp) -> ReversePayrollResult? {
         guard targetLbp.isFinite, targetLbp > 0, targetLbp <= maximumLbp,
               (0...maximumWorkingDays).contains(workingDays) else { return nil }
-        let transport = Double(workingDays) * dailyTransportLbp
+        guard dailyTransportationLbp.isFinite, dailyTransportationLbp >= 0,
+              dailyTransportationLbp <= maximumLbp,
+              dailyTransportationLbp.rounded(.towardZero) == dailyTransportationLbp else { return nil }
+        let transport = Double(workingDays) * dailyTransportationLbp
+        guard transport.isFinite, transport <= maximumLbp else { return nil }
         let benefits = includeFamilyBenefits ? forward(0).totalFamilyBenefitsAmount : 0
         let base = targetLbp - transport - benefits
         guard base.isFinite, base > 0 else { return nil }

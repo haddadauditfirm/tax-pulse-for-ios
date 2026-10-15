@@ -73,60 +73,84 @@ private struct HorizontalClip: Shape {
 struct OnboardingHost: View {
     @EnvironmentObject private var state: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var displayedStep = 1
+    @State private var outgoingStep: Int?
+    @State private var transitionStarted = Date()
 
     var body: some View {
         GeometryReader { geometry in
-            ZStack {
-                switch state.onboardingStep {
-                case 1:
-                    WelcomeScreen()
-                        .zIndex(1)
-                        .transition(navigationTransition(travel: geometry.size.width))
-                case 2:
-                    LanguageScreen()
-                        .zIndex(1)
-                        .transition(navigationTransition(travel: geometry.size.width))
-                case 3:
-                    ServiceScreen()
-                        .zIndex(1)
-                        .transition(navigationTransition(travel: geometry.size.width))
-                default:
-                    CalculatorShell()
-                        .zIndex(1)
-                        .transition(navigationTransition(travel: geometry.size.width))
+            TimelineView(.animation(paused: outgoingStep == nil || reduceMotion)) { timeline in
+                let frame = OnboardingSlideFrame(from: outgoingStep ?? displayedStep, to: displayedStep,
+                    width: geometry.size.width,
+                    elapsed: outgoingStep == nil || reduceMotion ? OnboardingSlideFrame.duration : timeline.date.timeIntervalSince(transitionStarted))
+                let steps = outgoingStep.map { [$0, displayedStep] } ?? [displayedStep]
+                ZStack {
+                    ForEach(steps, id: \.self) { step in
+                        page(step)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            // A physical transform keeps left/right identical in English and Arabic.
+                            .projectionEffect(ProjectionTransform(CGAffineTransform(
+                                translationX: step == displayedStep ? frame.incomingOffset : frame.outgoingOffset, y: 0)))
+                            .opacity(step == displayedStep ? frame.incomingOpacity : frame.outgoingOpacity)
+                            .allowsHitTesting(step == displayedStep && outgoingStep == nil)
+                            .accessibilityHidden(step != displayedStep)
+                            .zIndex(step == displayedStep ? 1 : 0)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Preserve the developer's full-bleed safe-area backgrounds.
+                .clipShape(HorizontalClip())
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // Clip only the sides (for the slide transition); a plain `.clipped()` would also
-            // cut each screen's full-bleed background off at the status bar and home indicator.
-            .clipShape(HorizontalClip())
-            .animation(reduceMotion ? nil : TaxPulseMotion.curve(duration: 0.36), value: state.onboardingStep)
         }
         .background(
             LinearGradient(colors: [Color(red: 0.027, green: 0.043, blue: 0.098), Color(red: 0.118, green: 0.161, blue: 0.231)], startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea()
         )
+        .onChange(of: state.onboardingStep, initial: true) { previous, next in
+            guard next != displayedStep else { return }
+            outgoingStep = reduceMotion || previous == next ? nil : displayedStep
+            displayedStep = next
+            transitionStarted = Date()
+        }
+        .onChange(of: reduceMotion) { _, enabled in
+            if enabled { outgoingStep = nil }
+        }
+        .task(id: transitionStarted) {
+            guard outgoingStep != nil else { return }
+            do {
+                try await Task.sleep(for: .seconds(OnboardingSlideFrame.duration))
+            } catch { return }
+            guard !Task.isCancelled else { return }
+            outgoingStep = nil
+        }
     }
-    private func navigationTransition(travel: CGFloat) -> AnyTransition {
-        guard !reduceMotion else { return .identity }
-        let direction: CGFloat = state.navigationForward ? 1 : -1
-        // Physical offsets keep the slide direction identical in English and Arabic.
-        return .asymmetric(
-            insertion: .modifier(active: OnboardingSlideModifier(offset: travel * direction),
-                identity: OnboardingSlideModifier(offset: 0)).combined(with: .opacity),
-            removal: .modifier(active: OnboardingSlideModifier(offset: -travel * direction),
-                identity: OnboardingSlideModifier(offset: 0)).combined(with: .opacity)
-        )
+
+    @ViewBuilder private func page(_ step: Int) -> some View {
+        switch step {
+        case 1: WelcomeScreen()
+        case 2: LanguageScreen()
+        case 3: ServiceScreen()
+        default: CalculatorShell()
+        }
     }
 }
 
-private struct OnboardingSlideModifier: ViewModifier, Animatable {
-    var offset: CGFloat
-    var animatableData: CGFloat {
-        get { offset }
-        set { offset = newValue }
+/// Both pages share Compose's 360ms FastOutSlowIn slide and crossfade clock.
+struct OnboardingSlideFrame {
+    static let duration = 0.36
+    let incomingOffset: CGFloat
+    let outgoingOffset: CGFloat
+    let incomingOpacity: Double
+    let outgoingOpacity: Double
+
+    init(from: Int, to: Int, width: CGFloat, elapsed: TimeInterval) {
+        let progress = TaxPulseMotion.easedProgress(elapsed / Self.duration)
+        let direction: CGFloat = to >= from ? 1 : -1
+        incomingOffset = width * CGFloat(1 - progress) * direction
+        outgoingOffset = -width * CGFloat(progress) * direction
+        incomingOpacity = progress
+        outgoingOpacity = 1 - progress
     }
-    func body(content: Content) -> some View { content.offset(x: offset) }
 }
 
 struct LanguageScreen: View {
@@ -521,7 +545,7 @@ struct PayrollCalculatorTab: View {
     }
 
     private var reverseSignature: String {
-        [state.reverseNetTarget, state.reverseWorkingDays, String(state.reverseIncludeFamily),
+        [state.reverseNetTarget, state.reverseWorkingDays, state.reverseDailyTransport, String(state.reverseIncludeFamily),
          state.payrollCurrency.rawValue, state.payrollExchangeRate, state.payrollMarital.rawValue,
          String(state.payrollChildren), String(state.payrollMonth), String(state.isNssfRegistered),
          String(state.useFamilyRebates)].joined(separator: "|")
