@@ -42,6 +42,7 @@ final class AppState: ObservableObject {
         }
     }
     @Published var reverseWorkingDays = ""
+    @Published var reverseDailyTransport = ""
     @Published var reverseIncludeFamily = true
 
     @Published var salaryPeriod: SalaryPeriod = .monthly
@@ -271,7 +272,7 @@ final class AppState: ObservableObject {
     func resetPayroll() {
         payrollReverseMode = false
         reverseNetTargetLbp = ""; reverseNetTargetUsd = ""
-        reverseWorkingDays = ""; reverseIncludeFamily = true
+        reverseWorkingDays = ""; reverseDailyTransport = ""; reverseIncludeFamily = true
         salaryPeriod = .monthly
         employmentType = .monthly
         payrollCurrency = .lbp

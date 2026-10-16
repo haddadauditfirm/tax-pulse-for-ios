@@ -191,7 +191,7 @@ struct PropertyTaxCalculatorTab: View {
         return VStack(alignment: .leading, spacing: 6) {
             Text("\(label(key)) (\(currency))").font(.app(11, weight: .bold)).foregroundStyle(Color.slateTextLight)
             HStack(spacing: 8) {
-                TextField(placeholder ?? label(key), text: display)
+                TextField(label(key), text: display, prompt: Text(placeholder ?? label(key)).foregroundStyle(Color.slateTextLight))
                     .keyboardType(usd || field == .exchangeRate ? .decimalPad : .numberPad).focused($focusedField, equals: field).tint(Color.blueAccent)
                     .font(.app(14)).foregroundStyle(Color.slateTextDark)
                     .multilineTextAlignment(state.language == .arabic ? .trailing : .leading)

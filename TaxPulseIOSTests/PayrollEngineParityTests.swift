@@ -3,6 +3,48 @@ import SwiftUI
 import UIKit
 @testable import TaxPulseIOS
 
+final class InputAndIconRenderingTests: XCTestCase {
+    @MainActor
+    func testEmptyNumericFieldKeepsReadableHintsInBothLanguagesAndAppearanceModes() throws {
+        let expectedColor = UIColor(Color.slateTextLight)
+        for hint in ["Enter salary amount", "أدخل مبلغ الراتب"] {
+            for appearance in [UIUserInterfaceStyle.light, .dark] {
+                let host = UIHostingController(rootView: NumericTextField(
+                    text: .constant(""), placeholder: hint, decimal: true
+                ))
+                host.overrideUserInterfaceStyle = appearance
+                host.loadViewIfNeeded()
+                host.view.frame = CGRect(x: 0, y: 0, width: 320, height: 60)
+                host.view.layoutIfNeeded()
+                let field = try XCTUnwrap(findTextField(in: host.view))
+                XCTAssertEqual(field.attributedPlaceholder?.string, hint)
+                let color = try XCTUnwrap(field.attributedPlaceholder?.attribute(
+                    .foregroundColor, at: 0, effectiveRange: nil
+                ) as? UIColor)
+                XCTAssertEqual(color, expectedColor)
+                XCTAssertEqual(field.overrideUserInterfaceStyle, .light)
+                XCTAssertEqual(field.backgroundColor, .clear)
+            }
+        }
+    }
+
+    @MainActor
+    func testAndroidMatchingIconAssetsAreAvailableInTheAppBundle() {
+        for name in ["LanguageGlobe", "PayrollCalculator", "ReversePayrollCalculator", "PropertyTax", "WelcomeBrand"] {
+            XCTAssertNotNil(UIImage(named: name), "Missing image asset: \(name)")
+        }
+    }
+
+    @MainActor
+    private func findTextField(in view: UIView) -> UITextField? {
+        if let field = view as? UITextField { return field }
+        for child in view.subviews {
+            if let field = findTextField(in: child) { return field }
+        }
+        return nil
+    }
+}
+
 final class PropertyTaxEngineTests: XCTestCase {
     private func decimal(_ value: String) -> Decimal { Decimal(string: value, locale: Locale(identifier: "en_US_POSIX"))! }
 
@@ -677,7 +719,71 @@ final class PayrollEngineParityTests: XCTestCase {
     }
 }
 
+final class OnboardingSlideParityTests: XCTestCase {
+    func testPagesShareTheAndroidSlideAndFadeClockInBothDirections() {
+        for width in [CGFloat(320), 768, 1024] {
+            let start = OnboardingSlideFrame(from: 2, to: 3, width: width, elapsed: 0)
+            XCTAssertEqual(start.incomingOffset, width)
+            XCTAssertEqual(start.outgoingOffset, 0)
+            XCTAssertEqual(start.incomingOpacity, 0)
+            XCTAssertEqual(start.outgoingOpacity, 1)
+            let end = OnboardingSlideFrame(from: 2, to: 3, width: width, elapsed: 0.36)
+            XCTAssertEqual(end.incomingOffset, 0)
+            XCTAssertEqual(end.outgoingOffset, -width)
+            XCTAssertEqual(end.incomingOpacity, 1)
+            XCTAssertEqual(end.outgoingOpacity, 0)
+            for elapsed in [0.0, 0.09, 0.18, 0.27, 0.36] {
+                let forward = OnboardingSlideFrame(from: 3, to: 4, width: width, elapsed: elapsed)
+                let backward = OnboardingSlideFrame(from: 4, to: 3, width: width, elapsed: elapsed)
+                XCTAssertEqual(forward.incomingOffset, -backward.incomingOffset, accuracy: 0.0001)
+                XCTAssertEqual(forward.outgoingOffset, -backward.outgoingOffset, accuracy: 0.0001)
+                XCTAssertEqual(forward.incomingOpacity + forward.outgoingOpacity, 1, accuracy: 0.0001)
+                XCTAssertEqual(forward.incomingOffset - forward.outgoingOffset, width, accuracy: 0.0001)
+            }
+        }
+        let midpoint = OnboardingSlideFrame(from: 1, to: 2, width: 400, elapsed: 0.18)
+        XCTAssertEqual(midpoint.incomingOpacity, 0.775561, accuracy: 0.00001)
+        XCTAssertEqual(midpoint.outgoingOffset, -310.2244, accuracy: 0.01)
+    }
+}
+
 final class ReversePayrollParityTests: XCTestCase {
+    func testManualTransportationChangesOnlyTheExemptAddition() throws {
+        let f = forward()
+        let salaryOnly = f(40_000_000)
+        for daily in [0.0, 300_000, 450_000, 600_000, 1_500_000] {
+            for days in [0, 22, 30] {
+                let transport = daily * Double(days)
+                let target = salaryOnly.netSalary + transport
+                let result = try XCTUnwrap(ReversePayrollEngine.calculate(targetLbp: target, workingDays: days,
+                    usd: false, forward: f, dailyTransportationLbp: daily))
+                XCTAssertEqual(result.transportLbp, transport, accuracy: 0.0001)
+                XCTAssertEqual(result.payroll.basicSalary, 40_000_000, accuracy: 0.0001)
+                XCTAssertEqual(result.payroll.taxAmount, salaryOnly.taxAmount, accuracy: 0.0001)
+                XCTAssertEqual(result.payroll.taxableSalary, salaryOnly.taxableSalary, accuracy: 0.0001)
+                XCTAssertEqual(result.payroll.totalNssfEmployee, salaryOnly.totalNssfEmployee, accuracy: 0.0001)
+                XCTAssertEqual(result.payroll.totalNssfEmployer, salaryOnly.totalNssfEmployer, accuracy: 0.0001)
+                XCTAssertEqual(result.matchedNetLbp, target, accuracy: 0.0001)
+            }
+            let usd = try XCTUnwrap(ReversePayrollEngine.calculate(targetLbp: 179_000_000, workingDays: 22,
+                usd: true, forward: f, dailyTransportationLbp: daily))
+            XCTAssertEqual(usd.transportLbp, 22 * daily, accuracy: 0.0001)
+            XCTAssertGreaterThanOrEqual(usd.matchedNetLbp, 179_000_000)
+            XCTAssertLessThan(usd.roundingDifferenceLbp, 895)
+        }
+        XCTAssertEqual(ReversePayrollEngine.dailyTransportation("٦٠٠٬٠٠٠"), 600_000)
+        XCTAssertEqual(ReversePayrollEngine.dailyTransportation("0"), 0)
+        for raw in ["", "-1", "450000.5", "12,34", "NaN", "1e8", "1000000000001"] {
+            XCTAssertNil(ReversePayrollEngine.dailyTransportation(raw))
+        }
+        for daily in [-1.0, 0.5, .nan, .infinity, 1_000_000_000_001] {
+            XCTAssertNil(ReversePayrollEngine.calculate(targetLbp: 179_000_000, workingDays: 22,
+                usd: false, forward: f, dailyTransportationLbp: daily))
+        }
+        XCTAssertNil(ReversePayrollEngine.calculate(targetLbp: 179_000_000, workingDays: 30,
+            usd: false, forward: f, dailyTransportationLbp: 1_000_000_000_000))
+    }
+
     private func forward(month: Int = 10, marital: MaritalStatus = .single, children: Int = 0,
                          nssf: Bool = true, rebates: Bool = true) -> (Double) -> PayrollItem {
         { gross in
@@ -789,11 +895,13 @@ final class ReversePayrollParityTests: XCTestCase {
         state.payrollCurrency = .usd
         XCTAssertEqual(state.reverseNetTarget, "2000")
         state.reverseWorkingDays = "26"
+        state.reverseDailyTransport = "600000"
         state.reverseIncludeFamily = false
         state.resetPayroll()
         XCTAssertEqual(state.reverseNetTargetLbp, "")
         XCTAssertEqual(state.reverseNetTargetUsd, "")
         XCTAssertEqual(state.reverseWorkingDays, "")
+        XCTAssertEqual(state.reverseDailyTransport, "")
         XCTAssertTrue(state.reverseIncludeFamily)
     }
 

@@ -95,64 +95,85 @@ private struct HorizontalClip: Shape {
 struct OnboardingHost: View {
     @EnvironmentObject private var state: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var displayedStep = 1
+    @State private var outgoingStep: Int?
+    @State private var transitionStarted = Date()
 
     var body: some View {
         GeometryReader { geometry in
-            ZStack {
-                switch state.onboardingStep {
-                case 1:
-                    WelcomeScreen()
-                        .zIndex(1)
-                        .transition(navigationTransition(travel: geometry.size.width))
-                case 2:
-                    LanguageScreen()
-                        .zIndex(1)
-                        .transition(navigationTransition(travel: geometry.size.width))
-                case 3:
-                    AuthFlowView()
-                        .zIndex(1)
-                        .transition(navigationTransition(travel: geometry.size.width))
-                case 4:
-                    ServiceScreen()
-                        .zIndex(1)
-                        .transition(navigationTransition(travel: geometry.size.width))
-                default:
-                    CalculatorShell()
-                        .zIndex(1)
-                        .transition(navigationTransition(travel: geometry.size.width))
+            TimelineView(.animation(paused: outgoingStep == nil || reduceMotion)) { timeline in
+                let frame = OnboardingSlideFrame(from: outgoingStep ?? displayedStep, to: displayedStep,
+                    width: geometry.size.width,
+                    elapsed: outgoingStep == nil || reduceMotion ? OnboardingSlideFrame.duration : timeline.date.timeIntervalSince(transitionStarted))
+                let steps = outgoingStep.map { [$0, displayedStep] } ?? [displayedStep]
+                ZStack {
+                    ForEach(steps, id: \.self) { step in
+                        page(step)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            // A physical transform keeps left/right identical in English and Arabic.
+                            .projectionEffect(ProjectionTransform(CGAffineTransform(
+                                translationX: step == displayedStep ? frame.incomingOffset : frame.outgoingOffset, y: 0)))
+                            .opacity(step == displayedStep ? frame.incomingOpacity : frame.outgoingOpacity)
+                            .allowsHitTesting(step == displayedStep && outgoingStep == nil)
+                            .accessibilityHidden(step != displayedStep)
+                            .zIndex(step == displayedStep ? 1 : 0)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Preserve the developer's full-bleed safe-area backgrounds.
+                .clipShape(HorizontalClip())
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // Clip only the sides (for the slide transition); a plain `.clipped()` would also
-            // cut each screen's full-bleed background off at the status bar and home indicator.
-            .clipShape(HorizontalClip())
-            .animation(reduceMotion ? nil : TaxPulseMotion.curve(duration: 0.36), value: state.onboardingStep)
         }
         .background(
             LinearGradient(colors: [Color(red: 0.027, green: 0.043, blue: 0.098), Color(red: 0.118, green: 0.161, blue: 0.231)], startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea()
         )
+        .onChange(of: state.onboardingStep, initial: true) { previous, next in
+            guard next != displayedStep else { return }
+            outgoingStep = reduceMotion || previous == next ? nil : displayedStep
+            displayedStep = next
+            transitionStarted = Date()
+        }
+        .onChange(of: reduceMotion) { _, enabled in
+            if enabled { outgoingStep = nil }
+        }
+        .task(id: transitionStarted) {
+            guard outgoingStep != nil else { return }
+            do {
+                try await Task.sleep(for: .seconds(OnboardingSlideFrame.duration))
+            } catch { return }
+            guard !Task.isCancelled else { return }
+            outgoingStep = nil
+        }
     }
-    private func navigationTransition(travel: CGFloat) -> AnyTransition {
-        guard !reduceMotion else { return .identity }
-        let direction: CGFloat = state.navigationForward ? 1 : -1
-        // Physical offsets keep the slide direction identical in English and Arabic.
-        return .asymmetric(
-            insertion: .modifier(active: OnboardingSlideModifier(offset: travel * direction),
-                identity: OnboardingSlideModifier(offset: 0)).combined(with: .opacity),
-            removal: .modifier(active: OnboardingSlideModifier(offset: -travel * direction),
-                identity: OnboardingSlideModifier(offset: 0)).combined(with: .opacity)
-        )
+
+    @ViewBuilder private func page(_ step: Int) -> some View {
+        switch step {
+        case 1: WelcomeScreen()
+        case 2: LanguageScreen()
+        case 3: AuthFlowView()
+        case 4: ServiceScreen()
+        default: CalculatorShell()
+        }
     }
 }
 
-private struct OnboardingSlideModifier: ViewModifier, Animatable {
-    var offset: CGFloat
-    var animatableData: CGFloat {
-        get { offset }
-        set { offset = newValue }
+/// Both pages share Compose's 360ms FastOutSlowIn slide and crossfade clock.
+struct OnboardingSlideFrame {
+    static let duration = 0.36
+    let incomingOffset: CGFloat
+    let outgoingOffset: CGFloat
+    let incomingOpacity: Double
+    let outgoingOpacity: Double
+
+    init(from: Int, to: Int, width: CGFloat, elapsed: TimeInterval) {
+        let progress = TaxPulseMotion.easedProgress(elapsed / Self.duration)
+        let direction: CGFloat = to >= from ? 1 : -1
+        incomingOffset = width * CGFloat(1 - progress) * direction
+        outgoingOffset = -width * CGFloat(progress) * direction
+        incomingOpacity = progress
+        outgoingOpacity = 1 - progress
     }
-    func body(content: Content) -> some View { content.offset(x: offset) }
 }
 
 struct LanguageScreen: View {
@@ -206,45 +227,38 @@ struct ServiceScreen: View {
     @ScaledMetric(relativeTo: .subheadline) private var subtitleSize: CGFloat = 13
 
     var body: some View {
-        GeometryReader { geometry in
-            let width = min(max(geometry.size.width - 32, 0), 720)
-            let columns = width >= 600 ? 3 : 2
-            ViewThatFits(in: .vertical) {
-                serviceContents(columns: columns, compact: false, useList: false)
-                    .fixedSize(horizontal: false, vertical: true)
-                serviceContents(columns: columns, compact: true, useList: true)
-                    .fixedSize(horizontal: false, vertical: true)
-                serviceContents(columns: columns, compact: true, useList: false)
-                    .fixedSize(horizontal: false, vertical: true)
-                ScrollView {
+        VStack(spacing: 0) {
+            TopBackButton { state.onboardingStep = 2 }
+                .padding(.horizontal, 24)
+            GeometryReader { geometry in
+                let width = min(max(geometry.size.width - 32, 0), 720)
+                let columns = width >= 600 ? 3 : 2
+                ViewThatFits(in: .vertical) {
+                    serviceContents(columns: columns, compact: false, useList: false)
+                        .fixedSize(horizontal: false, vertical: true)
                     serviceContents(columns: columns, compact: true, useList: true)
+                        .fixedSize(horizontal: false, vertical: true)
+                    serviceContents(columns: columns, compact: true, useList: false)
+                        .fixedSize(horizontal: false, vertical: true)
+                    ScrollView {
+                        serviceContents(columns: columns, compact: true, useList: true)
+                    }
                 }
+                .padding(.top, 8)
+                .frame(width: width, height: max(geometry.size.height - 24, 0), alignment: .center)
+                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
             }
-            .frame(width: width, height: max(geometry.size.height - 24, 0), alignment: .top)
-            .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
         }
     }
 
     private func serviceContents(columns: Int, compact: Bool, useList: Bool) -> some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Button { state.onboardingStep = 2 } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.app(16, weight: .black))
-                        .foregroundStyle(Color.white)
-                        .frame(width: 48, height: 48)
-                        .background(Color.white.opacity(0.08), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(state.language == .arabic ? "رجوع" : "Back")
-                Text(state.language == .arabic ? "اختر نوع الخدمة المطلوبة" : "Choose your service")
-                    .font(.app(compact ? compactTitleSize : titleSize, weight: .heavy))
-                    .foregroundStyle(Color.white)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity)
-            }
-            .environment(\.layoutDirection, .leftToRight)
+            Text(state.language == .arabic ? "اختر نوع الخدمة المطلوبة" : "Choose your service")
+                .font(.app(compact ? compactTitleSize : titleSize, weight: .heavy))
+                .foregroundStyle(Color.white)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
             if !compact {
                 Text(state.language == .arabic ? "انقر على إحدى الخدمات للبدء الفوري بحساباتك" : "Select a service below to jump straight in")
                     .font(.app(subtitleSize))
@@ -308,18 +322,18 @@ struct CalculatorShell: View {
                 }
                 .padding(16)
             }
-            .background(Color.slateLight.ignoresSafeArea())
+            // Dismiss on blank page space without attaching a tap recognizer over
+            // the fields and selectors. Dragging and the keypad Done button also dismiss.
+            .background {
+                Color.slateLight.ignoresSafeArea()
+                    .onTapGesture {
+                        UIApplication.shared.sendAction(
+                            #selector(UIResponder.resignFirstResponder),
+                            to: nil, from: nil, for: nil
+                        )
+                    }
+            }
             .scrollDismissesKeyboard(.interactively)
-            // Android dismisses the keyboard on any tap outside a field; mirror that
-            // without swallowing taps on the controls themselves.
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    UIApplication.shared.sendAction(
-                        #selector(UIResponder.resignFirstResponder),
-                        to: nil, from: nil, for: nil
-                    )
-                }
-            )
 
             // Branded modal host — year restriction, extension same-date warning,
             // extension saved. Mounted once here so any tab can trigger it.
@@ -377,8 +391,7 @@ struct ActiveServiceBanner: View {
     var body: some View {
         let meta = serviceMeta(state.selectedTab, language: state.language)
         HStack(spacing: 12) {
-            Image(systemName: meta.icon)
-                .font(.app(17, weight: .bold))
+            ServiceIcon(tab: state.selectedTab, systemName: meta.icon, size: 17)
                 .foregroundStyle(Color.white)
                 .frame(width: 36, height: 36)
                 .background(meta.color)
@@ -452,6 +465,7 @@ struct PayrollCalculatorTab: View {
                         state.salaryPeriod = $0 == "ANNUAL" ? .annual : .monthly
                         isCalculated = false
                     }
+                    .accessibilityIdentifier("payroll_salary_period")
                 }
 
                 Text(Copy.t("currency", state.language))
@@ -461,6 +475,7 @@ struct PayrollCalculatorTab: View {
                     state.payrollCurrency = $0 == "USD" ? .usd : .lbp
                     isCalculated = false
                 }
+                .accessibilityIdentifier("payroll_currency")
 
                 if state.payrollReverseMode {
                     ReversePayrollFields()
@@ -564,7 +579,7 @@ struct PayrollCalculatorTab: View {
     }
 
     private var reverseSignature: String {
-        [state.reverseNetTarget, state.reverseWorkingDays, String(state.reverseIncludeFamily),
+        [state.reverseNetTarget, state.reverseWorkingDays, state.reverseDailyTransport, String(state.reverseIncludeFamily),
          state.payrollCurrency.rawValue, state.payrollExchangeRate, state.payrollMarital.rawValue,
          String(state.payrollChildren), String(state.payrollMonth), String(state.isNssfRegistered),
          String(state.useFamilyRebates)].joined(separator: "|")
@@ -2230,8 +2245,7 @@ struct ServiceSelectionCard: View {
     }
 
     private func serviceIcon(_ meta: (title: String, description: String, icon: String, color: Color, gradient: [Color]), compact: Bool) -> some View {
-        Image(systemName: meta.icon)
-            .font(.app(compact ? 18 : 20, weight: .bold))
+        ServiceIcon(tab: tab, systemName: meta.icon, size: compact ? 18 : 20)
             .foregroundStyle(Color.white)
             .frame(width: compact ? 32 : 40, height: compact ? 32 : 40)
             .background(LinearGradient(colors: meta.gradient, startPoint: .topLeading, endPoint: .bottomTrailing))

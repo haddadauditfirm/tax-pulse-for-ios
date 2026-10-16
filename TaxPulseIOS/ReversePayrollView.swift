@@ -15,7 +15,9 @@ enum ReversePayrollCopy {
         "daysPlaceholder": ("Enter working days", "أدخل عدد أيام العمل"),
         "daysHint": ("Maximum 30 days. Choose 22 or 26, or enter another number.", "الحد الأقصى 30 يوماً. اختر 22 أو 26، أو أدخل عدداً آخر."),
         "transport": ("Transportation allowance", "بدل النقل"),
-        "transportExempt": ("450,000 LBP per working day. Transportation is excluded from salary tax and NSSF.", "450,000 ل.ل. عن كل يوم عمل. بدل النقل غير خاضع لضريبة الرواتب ولا للضمان."),
+        "dailyTransport": ("Daily transportation allowance", "بدل النقل اليومي"),
+        "dailyTransportPlaceholder": ("Enter daily transportation amount", "أدخل مبلغ بدل النقل اليومي"),
+        "transportExempt": ("Transportation = working days × the daily amount you enter in LBP. It is excluded from salary tax and NSSF.", "بدل النقل = عدد أيام العمل × المبلغ اليومي الذي تدخله بالليرة اللبنانية. لا يخضع لضريبة الرواتب ولا للضمان."),
         "family": ("Include NSSF family allowances in the target", "تضمين التعويضات العائلية للضمان ضمن الصافي المطلوب"),
         "familyHint": ("When off, family allowances are paid in addition to your target. Existing family rebate and NSSF rules still apply.", "عند إطفاء الخيار، تُضاف التعويضات العائلية فوق الصافي المطلوب. تبقى قواعد التنزيلات العائلية والضمان الحالية مطبقة."),
         "rateHint": ("Reverse calculation in USD uses 89,500 LBP per USD.", "الاحتساب العكسي بالدولار يعتمد 89,500 ل.ل. لكل دولار."),
@@ -44,6 +46,7 @@ enum ReversePayrollCopy {
         "error": ("Enter a positive valid net amount (whole LBP or up to 2 USD decimals), 0–30 working days, and select 89,500 for USD. The target must exceed transport plus any included family allowances; supported gross is up to 1 trillion LBP.", "أدخل صافياً موجباً صحيحاً (ليرة كاملة أو حتى رقمين عشريين بالدولار)، وأيام عمل من 0 إلى 30، واختر سعر 89,500 للدولار. يجب أن يتجاوز الصافي بدل النقل والتعويضات المضمّنة؛ الحد المدعوم للراتب الإجمالي تريليون ليرة."),
         "invalidTarget": ("Enter a positive net amount: whole LBP or up to 2 decimal places in USD.", "أدخل صافياً موجباً: ليرة كاملة أو حتى رقمين عشريين بالدولار."),
         "invalidDays": ("Enter a whole number of working days from 0 to 30.", "أدخل عدد أيام العمل برقم صحيح من 0 إلى 30."),
+        "invalidTransport": ("Enter a valid daily transportation amount in whole LBP, including 0 if none.", "أدخل مبلغ بدل النقل اليومي بالليرة اللبنانية دون كسور، أو 0 في حال عدم وجود بدل نقل."),
         "rateRequired": ("Tap Use Standard Rate: 89,500 to continue in USD.", "اضغط على استخدام السعر القياسي: 89,500 للمتابعة بالدولار."),
         "targetTooLow": ("The net target must exceed transport plus any family allowances included in it.", "يجب أن يتجاوز الصافي المطلوب بدل النقل والتعويضات العائلية المضمّنة فيه."),
         "unsupported": ("No supported salary was found. The gross salary limit is 1 trillion LBP.", "تعذّر إيجاد راتب ضمن الحد المدعوم. الحد الأقصى للراتب الإجمالي تريليون ليرة."),
@@ -210,7 +213,10 @@ private struct ReversePayrollCurrency: View {
                             .background(usd == dollar ? Color.navyPrimary : Color.white)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                             .overlay(RoundedRectangle(cornerRadius: 10).stroke(usd == dollar ? Color.navyPrimary : Color.slateBorder, lineWidth: 1))
-                    }.buttonStyle(.plain).accessibilityIdentifier(dollar ? "reverse_display_usd" : "reverse_display_lbp")
+                            .contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                        .accessibilityAddTraits(usd == dollar ? .isSelected : [])
+                        .accessibilityIdentifier(dollar ? "reverse_display_usd" : "reverse_display_lbp")
                 }
             }
             Text("\u{2066}1 USD = 89,500 LBP\u{2069}").font(.app(10)).foregroundStyle(Color.slateTextLight)
@@ -300,21 +306,24 @@ struct ReversePayrollFields: View {
                             .background(state.reverseWorkingDays == String(days) ? Color.blueAccent.opacity(0.08) : Color.clear)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                             .overlay(RoundedRectangle(cornerRadius: 10).stroke(state.reverseWorkingDays == String(days) ? Color.blueAccent : Color.slateBorder, lineWidth: 1))
+                            .contentShape(Rectangle())
                     }.buttonStyle(.plain)
                         .accessibilityIdentifier("reverse_days_\(days)")
+                        .accessibilityAddTraits(state.reverseWorkingDays == String(days) ? .isSelected : [])
                 }
             }
             Text(label("daysHint")).font(.app(10)).foregroundStyle(Color.slateTextLight).fixedSize(horizontal: false, vertical: true)
-            VStack(alignment: .leading, spacing: 6) {
-                if let days = ReversePayrollEngine.workingDays(state.reverseWorkingDays) {
-                    ReversePayrollRow(title: label("transport"), value: reverseMoney(Double(days) * ReversePayrollEngine.dailyTransportLbp, state.language, usd: usd), valueColor: .blueAccent)
-                        .accessibilityIdentifier("reverse_transport")
-                }
-                ReversePayrollNote(title: label("exemptTitle"), bodyText: label("transportExempt"))
+            StyledTextField(title: label("dailyTransport"), placeholder: label("dailyTransportPlaceholder"), suffix: "LBP",
+                text: Binding(get: { state.reverseDailyTransport }, set: { state.reverseDailyTransport = PropertyTaxEngine.normalizeInput($0) }),
+                textAlignment: state.language == .arabic ? .right : .left)
+                .accessibilityIdentifier("reverse_daily_transport")
+            if let days = ReversePayrollEngine.workingDays(state.reverseWorkingDays),
+               let dailyAmount = ReversePayrollEngine.dailyTransportation(state.reverseDailyTransport) {
+                ReversePayrollRow(title: label("transport"), value: reverseMoney(Double(days) * dailyAmount, state.language, usd: usd), valueColor: .blueAccent)
+                    .accessibilityIdentifier("reverse_transport")
             }
-            .padding(12).frame(maxWidth: .infinity, alignment: .leading).background(Color.slate50)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.slateBorder, lineWidth: 1))
+            Text(label("transportExempt")).font(.app(10)).foregroundStyle(Color.slateTextLight)
+                .fixedSize(horizontal: false, vertical: true)
             if usd {
                 Text(label("rateHint")).font(.app(11)).foregroundStyle(Color.slateTextLight)
                 BorderedPillButton(title: Copy.t("useStandardRate", state.language)) { state.payrollExchangeRate = "89500" }
@@ -344,6 +353,7 @@ struct ReversePayrollOutcome: View {
                     error = nil
                     guard let target = ReversePayrollEngine.target(state.reverseNetTarget, usd: usd) else { error = "invalidTarget"; return }
                     guard let days = ReversePayrollEngine.workingDays(state.reverseWorkingDays) else { error = "invalidDays"; return }
+                    guard let dailyAmount = ReversePayrollEngine.dailyTransportation(state.reverseDailyTransport) else { error = "invalidTransport"; return }
                     guard !usd || state.payrollExchangeRate == "89500" else { error = "rateRequired"; return }
                     let forward: (Double) -> PayrollItem = { gross in
                         PayrollEngine.calculate(basicSalary: gross, employmentType: .monthly,
@@ -353,10 +363,10 @@ struct ReversePayrollOutcome: View {
                             useFamilyRebates: state.useFamilyRebates, period: .monthly)
                     }
                     let benefits = state.reverseIncludeFamily ? forward(0).totalFamilyBenefitsAmount : 0
-                    guard target > Double(days) * ReversePayrollEngine.dailyTransportLbp + benefits else { error = "targetTooLow"; return }
+                    guard target > Double(days) * dailyAmount + benefits else { error = "targetTooLow"; return }
                     withAnimation(reduceMotion ? nil : TaxPulseMotion.curve(duration: 0.18)) {
                         result = ReversePayrollEngine.calculate(targetLbp: target, workingDays: days, usd: usd,
-                            includeFamilyBenefits: state.reverseIncludeFamily, forward: forward)
+                        includeFamilyBenefits: state.reverseIncludeFamily, forward: forward, dailyTransportationLbp: dailyAmount)
                     }
                     if result == nil { error = "unsupported" }
                 }.accessibilityIdentifier("reverse_calculate")
@@ -437,13 +447,24 @@ struct PayrollCalculationModeSelector: View {
         let title = isReverse ? ReversePayrollCopy.t("title", language)
             : (language == .arabic ? "الاحتساب العادي" : "Normal calculation")
         let caption = isReverse
-            ? (language == .arabic ? "من الصافي إلى الراتب الشهري" : "Net pay to monthly salary")
+            ? (language == .arabic ? "من الصافي إلى الراتب الإجمالي" : "Net pay to monthly salary")
             : (language == .arabic ? "من الراتب الإجمالي إلى الصافي" : "Gross salary to net pay")
         return Button { onSelect(isReverse) } label: {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Image(systemName: isReverse ? "arrow.left.arrow.right" : "calculator")
-                        .font(.app(20)).foregroundStyle(Color.blueAccent)
+                    Group {
+                        if isReverse {
+                            Image("ReversePayrollCalculator")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                        } else {
+                            CalculatorIcon(color: .blueAccent)
+                        }
+                    }
+                    .foregroundStyle(Color.blueAccent)
+                    .frame(width: 20, height: 20)
+                    .accessibilityHidden(true)
                     Spacer()
                     if active {
                         Image(systemName: "checkmark.circle.fill")

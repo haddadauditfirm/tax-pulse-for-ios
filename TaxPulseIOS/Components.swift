@@ -148,34 +148,17 @@ struct InfoNoteBox: View {
     }
 }
 
-/// A small vector calculator glyph — rounded body, a screen bar, and a 3x2 key
-/// grid — since "calculator" is not an actual SF Symbol on this SDK and the closest
-/// real symbols (math operators) don't read as a calculator the way Android's does.
+/// The same outlined calculator as Android, with a transparent background.
 struct CalculatorIcon: View {
     var color: Color = .white
 
     var body: some View {
-        Canvas { context, size in
-            let w = size.width
-            let h = size.height
-            let body = RoundedRectangle(cornerRadius: w * 0.2, style: .continuous)
-                .path(in: CGRect(x: 0, y: 0, width: w, height: h))
-            context.stroke(body, with: .color(color), style: StrokeStyle(lineWidth: w * 0.09, lineCap: .round, lineJoin: .round))
-
-            let screen = RoundedRectangle(cornerRadius: w * 0.05, style: .continuous)
-                .path(in: CGRect(x: w * 0.18, y: h * 0.14, width: w * 0.64, height: h * 0.22))
-            context.stroke(screen, with: .color(color), style: StrokeStyle(lineWidth: w * 0.07, lineCap: .round, lineJoin: .round))
-
-            let dotSize = w * 0.12
-            let columns: [CGFloat] = [w * 0.28, w * 0.5, w * 0.72]
-            let rows: [CGFloat] = [h * 0.58, h * 0.79]
-            for y in rows {
-                for x in columns {
-                    let dot = Circle().path(in: CGRect(x: x - dotSize / 2, y: y - dotSize / 2, width: dotSize, height: dotSize))
-                    context.fill(dot, with: .color(color))
-                }
-            }
-        }
+        Image("PayrollCalculator")
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .foregroundStyle(color)
+            .accessibilityHidden(true)
     }
 }
 
@@ -322,8 +305,10 @@ struct OptionChip: View {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(isSelected ? Color.navyPrimary : Color.clear, lineWidth: 1)
             )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -366,8 +351,10 @@ struct HorizontalToggleRow: View {
                         .padding(.horizontal, 6)
                         .background(isSelected ? Color.navyPrimary : Color.clear)
                         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
         .padding(4)
@@ -398,6 +385,7 @@ struct LanguageSegmentedControl: View {
                         .padding(.horizontal, 6)
                         .background(isSelected ? Color.blueAccent : Color.clear)
                         .clipShape(Capsule())
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(key == "EN" ? "English" : "Arabic")
@@ -436,8 +424,10 @@ struct CompactOptionButton: View {
             .padding(.vertical, 8)
             .background(isSelected ? Color.navyPrimary : Color.slateLight)
             .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -499,8 +489,10 @@ struct SelectableCardGrid: View {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(isSelected ? selectedFill : Color.slateBorder, lineWidth: 1)
                     )
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
     }
@@ -519,9 +511,11 @@ struct NumberCircle: View {
                 .frame(width: 44, height: 44)
                 .background(isSelected ? Color.navyPrimary : Color.slateLight)
                 .clipShape(Circle())
+                .contentShape(Rectangle())
         }
         .frame(maxWidth: .infinity)
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -582,7 +576,9 @@ struct NumericTextField: UIViewRepresentable {
         field.keyboardType = decimal ? .decimalPad : .numberPad
         field.font = font
         field.textColor = textColor
-        field.placeholder = placeholder
+        configurePlaceholder(field)
+        field.tintColor = UIColor(Color.blueAccent)
+        field.overrideUserInterfaceStyle = .light
         field.borderStyle = .none
         field.backgroundColor = .clear
         field.adjustsFontSizeToFitWidth = true
@@ -598,7 +594,7 @@ struct NumericTextField: UIViewRepresentable {
 
     func updateUIView(_ field: UITextField, context: Context) {
         context.coordinator.parent = self
-        field.placeholder = placeholder
+        configurePlaceholder(field)
         field.keyboardType = decimal ? .decimalPad : .numberPad
         field.font = font
         field.textColor = textColor
@@ -610,6 +606,13 @@ struct NumericTextField: UIViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    private func configurePlaceholder(_ field: UITextField) {
+        field.attributedPlaceholder = NSAttributedString(string: placeholder, attributes: [
+            .foregroundColor: UIColor(Color.slateTextLight),
+            .font: font
+        ])
+    }
 
     final class Coordinator: NSObject, UITextFieldDelegate {
         var parent: NumericTextField
@@ -733,6 +736,7 @@ struct YearPickerField: View {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .stroke(Color.slateBorder, lineWidth: 1)
                 )
+                .contentShape(Rectangle())
             }
             // Digits read left-to-right even in Arabic.
             .environment(\.layoutDirection, .leftToRight)
@@ -860,6 +864,7 @@ struct AndroidToggleCard: View {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(isOn ? Color.navyPrimary.opacity(0.3) : Color.slateBorder, lineWidth: 1)
             )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -1013,6 +1018,7 @@ private struct MaritalStatusRow: View {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(isSelected ? Color.navyPrimary : Color.clear, lineWidth: 1.5)
             )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.2), value: isSelected)
@@ -1167,20 +1173,48 @@ struct LanguageGlobe: View {
     var tint: Color = .blueAccent
 
     var body: some View {
-        Image(systemName: "globe")
-            .font(.app(size, weight: .regular))
+        Image("LanguageGlobe")
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
             .foregroundStyle(tint)
             .frame(width: size, height: size)
             .accessibilityHidden(true)
     }
 }
 
+/// Property tax uses Android's house-and-office artwork in both service locations.
+struct ServiceIcon: View {
+    let tab: ServiceTab
+    let systemName: String
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if tab == .property {
+                Image("PropertyTax")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: size, height: size)
+            } else {
+                Image(systemName: systemName)
+                    .font(.app(size, weight: .bold))
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 struct TutorialBookIcon: View {
+    var tint: Color = .blueAccent
+
     var body: some View {
         Image("TutorialBook")
-            .renderingMode(.original)
+            .renderingMode(.template)
             .resizable()
             .scaledToFit()
+            .foregroundStyle(tint)
             .accessibilityHidden(true)
     }
 }
