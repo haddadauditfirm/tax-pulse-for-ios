@@ -162,6 +162,39 @@ struct CalculatorIcon: View {
     }
 }
 
+/// Option 1: a transparent outline with the same six-key geometry on Android.
+private struct CalculateButtonIcon: View {
+    var body: some View {
+        Canvas { context, size in
+            let unit = min(size.width, size.height) / 24
+            let left = (size.width - 24 * unit) / 2
+            let top = (size.height - 24 * unit) / 2
+            let outline = Path(roundedRect: CGRect(
+                x: left + 3 * unit, y: top + 1.75 * unit,
+                width: 18 * unit, height: 20.5 * unit
+            ), cornerRadius: 3.25 * unit)
+            context.stroke(outline, with: .color(.white), lineWidth: 1.7 * unit)
+            let display = Path(roundedRect: CGRect(
+                x: left + 6 * unit, y: top + 5 * unit,
+                width: 12 * unit, height: 4 * unit
+            ), cornerRadius: 0.8 * unit)
+            context.stroke(display, with: .color(.white), lineWidth: 1.5 * unit)
+            for row in 0..<2 {
+                for column in 0..<3 {
+                    let centerX = left + (7 + CGFloat(column) * 5) * unit
+                    let centerY = top + (13 + CGFloat(row) * 5) * unit
+                    let radius = 1.25 * unit
+                    context.fill(Path(ellipseIn: CGRect(
+                        x: centerX - radius, y: centerY - radius,
+                        width: 2 * radius, height: 2 * radius
+                    )), with: .color(.white))
+                }
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 /// The calculate CTA shared by the payroll, profit and penalties tabs.
 /// Ports Android's `AnimatedCalculateButton`: 54pt tall, 12pt radius, a diagonal
 /// NavyPrimary→#2563EB gradient, a 1.5pt white 25% hairline, and a leading
@@ -173,7 +206,7 @@ struct AnimatedCalculateButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                CalculatorIcon()
+                CalculateButtonIcon()
                     .frame(width: 20, height: 20)
                 Text(title)
                     .font(.app(15, weight: .bold))
