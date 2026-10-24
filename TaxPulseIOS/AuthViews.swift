@@ -177,7 +177,11 @@ private struct AuthEmailStep: View {
             }
             .scrollDismissesKeyboard(.interactively)
             }
-            TopBackButton(action: onBack)
+            TopBackButton {
+                focused = false
+                onBack()
+            }
+            .zIndex(1)
         }
         .onAppear { if auth.email.isEmpty { focused = true } }
     }
@@ -286,6 +290,7 @@ private struct AuthCodeStep: View {
             .scrollDismissesKeyboard(.interactively)
             }
             TopBackButton { auth.backToEmail() }
+                .zIndex(1)
         }
         .onChange(of: auth.codeErrorTick) { _, _ in
             withAnimation(.linear(duration: 0.35)) { shake += 1 }

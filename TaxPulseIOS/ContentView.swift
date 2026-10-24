@@ -235,6 +235,10 @@ struct ServiceScreen: View {
     @ScaledMetric(relativeTo: .headline) private var compactTitleSize: CGFloat = 24
     @ScaledMetric(relativeTo: .subheadline) private var subtitleSize: CGFloat = 13
 
+    private var orderedServices: [ServiceTab] {
+        state.language == .arabic ? [.payroll, .profit, .property, .penalties, .extensions] : ServiceTab.allCases
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             TopBackButton { state.onboardingStep = 2 }
@@ -264,7 +268,7 @@ struct ServiceScreen: View {
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 8)
             VStack(spacing: style == 0 ? 12 : style == 1 ? 10 : 6) {
-                ForEach(ServiceTab.allCases) { tab in
+                ForEach(orderedServices) { tab in
                     ServiceListRow(tab: tab, style: style) { state.chooseService(tab) }
                 }
             }.padding(.top, style == 2 ? 12 : 16)
