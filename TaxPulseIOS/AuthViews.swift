@@ -5,13 +5,11 @@ import SwiftUI
 enum AuthCopy {
     private static let strings: [String: (String, String)] = [
         "signInTitle": ("Sign in to Tax Pulse", "تسجيل الدخول إلى Tax Pulse"),
-        "signInSub": ("Enter your email and we'll send you a 6-digit code. No password needed.",
-                      "أدخل بريدك الإلكتروني وسنرسل لك رمزاً من 6 أرقام. لا حاجة لكلمة مرور."),
+        "signInSub": ("Enter your email and we'll send you a 6-digit code.",
+                      "أدخل بريدك الإلكتروني وسنرسل لك رمزاً من 6 أرقام."),
         "emailLabel": ("Email address", "البريد الإلكتروني"),
         "emailPlaceholder": ("name@company.com", "name@company.com"),
         "sendCode": ("Send code", "إرسال الرمز"),
-        "staySignedIn": ("You'll stay signed in on this device until you sign out.",
-                         "ستبقى مسجلاً على هذا الجهاز حتى تختار تسجيل الخروج."),
         "checkEmail": ("Check your email", "تحقق من بريدك الإلكتروني"),
         "codeSentTo": ("We sent a 6-digit code to", "أرسلنا رمزاً من 6 أرقام إلى"),
         "change": ("Change", "تغيير"),
@@ -33,8 +31,20 @@ enum AuthCopy {
         "errUnknown": ("Something went wrong. Please try again.", "حدث خطأ ما. يرجى المحاولة مجدداً."),
         "account": ("Account", "الحساب"),
         "signedInAs": ("Signed in as", "مسجل الدخول باسم"),
-        "fullName": ("Full name", "الاسم الكامل"),
         "fullNamePlaceholder": ("Add your name", "أضف اسمك"),
+        "profile": ("Profile", "الملف الشخصي"),
+        "close": ("Close", "إغلاق"),
+        "personalInfo": ("Personal information", "المعلومات الشخصية"),
+        "privacy": ("Privacy & security", "الخصوصية والأمان"),
+        "privacySub": ("Your data and account", "بياناتك وحسابك"),
+        "firstName": ("First name", "الاسم"),
+        "lastName": ("Last name", "اسم العائلة"),
+        "firstNamePlaceholder": ("Enter your first name", "أدخل اسمك"),
+        "lastNamePlaceholder": ("Enter your last name", "أدخل اسم العائلة"),
+        "emailLocked": ("This is the email you sign in with and can't be changed.",
+                        "هذا هو البريد الذي تسجل الدخول به ولا يمكن تغييره."),
+        "dangerZone": ("Account", "الحساب"),
+        "deleteAccountSub": ("Permanently remove your account and profile", "إزالة حسابك وملفك الشخصي نهائياً"),
         "save": ("Save", "حفظ"),
         "saved": ("Saved", "تم الحفظ"),
         "saveFailed": ("Couldn't save. Check your connection.", "تعذر الحفظ. تحقق من الاتصال."),
@@ -92,6 +102,7 @@ struct AuthFlowView: View {
 
     var body: some View {
         ZStack {
+            AuthBackground()
             switch auth.stage {
             case .email:
                 AuthEmailStep(onBack: { state.onboardingStep = 2 })
@@ -113,11 +124,10 @@ private struct AuthEmailStep: View {
 
     var body: some View {
         let language = state.language
-        VStack(spacing: 0) {
-            TopBackButton(action: onBack)
+        ZStack(alignment: .top) {
+            GeometryReader { viewport in
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
-                    Spacer().frame(height: 24)
                     AuthHeroIcon(systemName: "envelope.fill")
                     Spacer().frame(height: 24)
                     Text(AuthCopy.t("signInTitle", language))
@@ -159,19 +169,15 @@ private struct AuthEmailStep: View {
                         )
                     }
                     .animation(.easeInOut(duration: 0.2), value: auth.error)
-
-                    Spacer().frame(height: 20)
-                    HStack(spacing: 6) {
-                        Image(systemName: "lock.fill").font(.app(11))
-                        Text(AuthCopy.t("staySignedIn", language)).font(.app(12))
-                    }
-                    .foregroundStyle(authMuted)
-                    .multilineTextAlignment(.center)
                 }
                 .padding(.horizontal, 24)
-                .padding(.bottom, 24)
+                .padding(.vertical, 72)
+                // Centred in the viewport like Android's Arrangement.Center; scrolls when taller.
+                .frame(minHeight: viewport.size.height)
             }
             .scrollDismissesKeyboard(.interactively)
+            }
+            TopBackButton(action: onBack)
         }
         .onAppear { if auth.email.isEmpty { focused = true } }
     }
@@ -189,11 +195,10 @@ private struct AuthCodeStep: View {
 
     var body: some View {
         let language = state.language
-        VStack(spacing: 0) {
-            TopBackButton { auth.backToEmail() }
+        ZStack(alignment: .top) {
+            GeometryReader { viewport in
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
-                    Spacer().frame(height: 24)
                     AuthHeroIcon(systemName: "envelope.open.fill")
                     Spacer().frame(height: 24)
                     Text(AuthCopy.t("checkEmail", language))
@@ -274,9 +279,13 @@ private struct AuthCodeStep: View {
                         .padding(.top, 8)
                 }
                 .padding(.horizontal, 24)
-                .padding(.bottom, 24)
+                .padding(.vertical, 72)
+                // Centred in the viewport like Android's Arrangement.Center; scrolls when taller.
+                .frame(minHeight: viewport.size.height)
             }
             .scrollDismissesKeyboard(.interactively)
+            }
+            TopBackButton { auth.backToEmail() }
         }
         .onChange(of: auth.codeErrorTick) { _, _ in
             withAnimation(.linear(duration: 0.35)) { shake += 1 }
@@ -366,6 +375,33 @@ private struct ShakeEffect: GeometryEffect {
 
 // MARK: - Shared building blocks (dark onboarding visual language)
 
+/// Android's `AuthBackground`: slate gradient plus a slowly breathing blue glow top-left.
+private struct AuthBackground: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var expanded = false
+
+    var body: some View {
+        GeometryReader { geometry in
+            let diameter = min(geometry.size.width, geometry.size.height)
+            ZStack {
+                LinearGradient(colors: [Color(hex: 0x0F172A), Color(hex: 0x1E293B)], startPoint: .top, endPoint: .bottom)
+                Circle()
+                    .fill(authBlue.opacity(0.07))
+                    .frame(width: diameter, height: diameter)
+                    .scaleEffect(expanded ? 1.15 : 0.85)
+                    .position(x: geometry.size.width * 0.15, y: geometry.size.height * 0.12)
+            }
+        }
+        .environment(\.layoutDirection, .leftToRight)
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 4.5).repeatForever(autoreverses: true)) { expanded = true }
+        }
+    }
+}
+
 private struct AuthHeroIcon: View {
     var systemName: String
 
@@ -401,7 +437,6 @@ private struct AuthGlassCard<Content: View>: View {
             .background(Color.white.opacity(0.04))
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.white.opacity(0.08), lineWidth: 1))
-            .shadow(color: .black.opacity(0.3), radius: 16, y: 8)
     }
 }
 
@@ -416,9 +451,6 @@ private struct AuthEmailField: View {
     var body: some View {
         let isFocused = focused.wrappedValue
         HStack(spacing: 12) {
-            Image(systemName: "at")
-                .font(.app(17, weight: .semibold))
-                .foregroundStyle(isFocused ? authBlueLight : authMuted)
             TextField("", text: $text, prompt: Text(placeholder).foregroundColor(authMuted.opacity(0.6)))
                 .font(.app(16, weight: .semibold))
                 .foregroundStyle(Color.white)
@@ -528,16 +560,12 @@ private struct AuthPressStyle: ButtonStyle {
 
 struct AccountHeaderButton: View {
     var email: String
+    var name = PersonName()
     var action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text(email.first.map { String($0).uppercased() } ?? "?")
-                .font(.app(14, weight: .black))
-                .foregroundStyle(Color.white)
-                .frame(width: 34, height: 34)
-                .background(LinearGradient(colors: [.navyMedium, .blueAccent], startPoint: .topLeading, endPoint: .bottomTrailing))
-                .clipShape(Circle())
+            ProfileInitials(name: name, email: email, size: 34)
                 .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
         }
         .buttonStyle(.plain)
@@ -545,92 +573,67 @@ struct AccountHeaderButton: View {
     }
 }
 
-struct AccountSheet: View {
+// MARK: - Profile (full screen: Profile → Personal information / Privacy & security)
+
+/// Opened from the avatar in the calculator header. Sub-pages push inside the
+/// screen's own NavigationStack, so the system back swipe works in both languages.
+struct ProfileScreen: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var auth: AuthStore
     @Environment(\.dismiss) private var dismiss
-    @State private var nameDraft = ""
     @State private var confirmSignOut = false
-    @State private var confirmDelete = false
-    @FocusState private var nameFocused: Bool
+    @State private var path: [Page] = Self.debugInitialPath
+
+    private enum Page: Hashable { case personalInfo, privacy }
 
     var body: some View {
         let language = state.language
-        let email = auth.session?.email ?? ""
-        ZStack {
-            ScrollView {
-                VStack(spacing: 0) {
-                    Text(String((auth.fullName.first ?? email.first) ?? "?").uppercased())
-                        .font(.app(26, weight: .black))
-                        .foregroundStyle(Color.white)
-                        .frame(width: 64, height: 64)
-                        .background(LinearGradient(colors: [.navyMedium, .blueAccent], startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .clipShape(Circle())
-                        .padding(.top, 28)
-                    Text(auth.fullName.isEmpty ? AuthCopy.t("account", language) : auth.fullName)
-                        .font(.app(18, weight: .black))
-                        .foregroundStyle(Color.navyPrimary)
-                        .padding(.top, 12)
-                    Text(AuthCopy.t("signedInAs", language))
-                        .font(.app(11, weight: .bold))
-                        .foregroundStyle(Color.slateTextLight)
-                        .padding(.top, 6)
-                    Text(email)
-                        .font(.app(14, weight: .semibold))
-                        .foregroundStyle(Color.slateTextDark)
-                        .environment(\.layoutDirection, .leftToRight)
+        NavigationStack(path: $path) {
+            ZStack {
+                ScrollView {
+                    VStack(spacing: 16) {
+                        profileHeader(language)
 
-                    nameCard(language)
-                        .padding(.top, 20)
-
-                    Button { confirmSignOut = true } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "rectangle.portrait.and.arrow.right")
-                                .flipsForRightToLeftLayoutDirection(true)
-                            Text(AuthCopy.t("signOut", language))
+                        ProfileGroup {
+                            NavigationLink(value: Page.personalInfo) {
+                                ProfileRow(icon: "person.fill", tint: .blueAccent,
+                                           title: AuthCopy.t("personalInfo", language),
+                                           subtitle: auth.name.full.isEmpty ? AuthCopy.t("fullNamePlaceholder", language) : auth.name.full)
+                            }
+                            ProfileDivider()
+                            NavigationLink(value: Page.privacy) {
+                                ProfileRow(icon: "lock.shield.fill", tint: .navyMedium,
+                                           title: AuthCopy.t("privacy", language),
+                                           subtitle: AuthCopy.t("privacySub", language))
+                            }
                         }
-                        .font(.app(15, weight: .black))
-                        .foregroundStyle(Color.navyPrimary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.slateBorder, lineWidth: 1.5))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(auth.accountBusy)
-                    .padding(.top, 16)
 
-                    Button { confirmDelete = true } label: {
-                        HStack(spacing: 8) {
-                            if auth.accountBusy { ProgressView().tint(.dangerRed).scaleEffect(0.8) }
-                            Text(AuthCopy.t("deleteAccount", language))
+                        Button { confirmSignOut = true } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "rectangle.portrait.and.arrow.right")
+                                    .flipsForRightToLeftLayoutDirection(true)
+                                Text(AuthCopy.t("signOut", language))
+                            }
+                            .font(.app(15, weight: .black))
+                            .foregroundStyle(Color.navyPrimary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.slateBorder, lineWidth: 1))
                         }
-                        .font(.app(13, weight: .bold))
-                        .foregroundStyle(Color.dangerRed)
-                        .frame(height: 44)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(auth.accountBusy)
-                    .padding(.top, 4)
+                        .buttonStyle(.plain)
+                        .disabled(auth.accountBusy)
 
-                    if auth.accountMessage == .deleteFailed {
-                        Text(AuthCopy.t("deleteFailed", language))
-                            .font(.app(12, weight: .bold))
-                            .foregroundStyle(Color.dangerRed)
-                            .multilineTextAlignment(.center)
+                        Text(AuthCopy.t("version", language).replacingOccurrences(of: "%@", with: UpdateStore.versionLabel))
+                            .font(.app(11))
+                            .foregroundStyle(Color.slateMuted)
                     }
-
-                    Text(AuthCopy.t("version", language).replacingOccurrences(of: "%@", with: UpdateStore.versionLabel))
-                        .font(.app(11))
-                        .foregroundStyle(Color.slateMuted)
-                        .padding(.top, 8)
+                    .padding(16)
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 24)
-            }
 
-            if confirmSignOut {
-                confirmOverlay(
-                    TaxPulseModal(
+                if confirmSignOut {
+                    ProfileConfirmOverlay(modal: TaxPulseModal(
                         icon: .triangle(Color.blueAccent),
                         title: AuthCopy.t("signOutTitle", language),
                         message: AuthCopy.t("signOutMsg", language),
@@ -642,93 +645,345 @@ struct AccountSheet: View {
                         },
                         secondaryTitle: AuthCopy.t("cancel", language),
                         secondaryAction: { confirmSignOut = false }
-                    )
-                )
+                    ))
+                }
             }
-            if confirmDelete {
-                confirmOverlay(
-                    TaxPulseModal(
-                        icon: .triangle(Color.dangerRed),
-                        title: AuthCopy.t("deleteTitle", language),
-                        message: AuthCopy.t("deleteMsg", language),
-                        primaryTitle: AuthCopy.t("deleteAccount", language),
-                        primaryAction: {
-                            confirmDelete = false
-                            auth.deleteAccount { dismiss() }
-                        },
-                        secondaryTitle: AuthCopy.t("cancel", language),
-                        secondaryAction: { confirmDelete = false }
-                    )
-                )
+            .animation(.easeInOut(duration: 0.2), value: confirmSignOut)
+            .background(Color.slateLight.ignoresSafeArea())
+            .navigationTitle(AuthCopy.t("profile", language))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .font(.app(14, weight: .bold))
+                            .foregroundStyle(Color.navyPrimary)
+                            .frame(width: 34, height: 34)
+                            .background(Color.white)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color.slateBorder, lineWidth: 1))
+                    }
+                    .accessibilityLabel(AuthCopy.t("close", language))
+                }
+            }
+            .navigationDestination(for: Page.self) { page in
+                switch page {
+                case .personalInfo: PersonalInfoScreen()
+                case .privacy: PrivacyScreen(onDeleted: { dismiss() })
+                }
             }
         }
-        .background(Color.white.ignoresSafeArea())
-        .animation(.easeInOut(duration: 0.2), value: confirmSignOut)
-        .animation(.easeInOut(duration: 0.2), value: confirmDelete)
+        .tint(Color.navyPrimary)
         .environment(\.layoutDirection, language == .arabic ? .rightToLeft : .leftToRight)
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
-        .presentationCornerRadius(28)
         .onAppear {
-            nameDraft = auth.fullName
             auth.accountMessage = nil
             auth.loadProfile()
         }
-        .onChange(of: auth.fullName) { _, newValue in
-            if !nameFocused { nameDraft = newValue }
-        }
     }
 
-    private func nameCard(_ language: AppLanguage) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(AuthCopy.t("fullName", language))
-                .font(.app(12, weight: .bold))
-                .foregroundStyle(Color.navyMedium)
-            HStack(spacing: 10) {
-                TextField(AuthCopy.t("fullNamePlaceholder", language), text: $nameDraft)
-                    .font(.app(15))
-                    .foregroundStyle(Color.slateTextDark)
-                    .textContentType(.name)
-                    .submitLabel(.done)
-                    .focused($nameFocused)
-                    .padding(.horizontal, 14)
-                    .frame(height: 48)
-                    .background(Color.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(nameFocused ? Color.blueAccent : Color.slateBorder, lineWidth: nameFocused ? 2 : 1)
-                    )
-                let canSave = !auth.accountBusy
-                    && nameDraft.trimmingCharacters(in: .whitespacesAndNewlines) != auth.fullName
+    /// QA hook: `-uiProfile personal|privacy` opens straight onto a sub-page in Debug builds.
+    private static var debugInitialPath: [Page] {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-uiProfile"), i + 1 < args.count {
+            switch args[i + 1] {
+            case "personal": return [.personalInfo]
+            case "privacy": return [.privacy]
+            default: break
+            }
+        }
+        #endif
+        return []
+    }
+
+    private func profileHeader(_ language: AppLanguage) -> some View {
+        let email = auth.session?.email ?? ""
+        return VStack(spacing: 6) {
+            ProfileInitials(name: auth.name, email: email, size: 72)
+                .padding(.bottom, 6)
+            Text(auth.name.full.isEmpty ? AuthCopy.t("account", language) : auth.name.full)
+                .font(.app(19, weight: .black))
+                .foregroundStyle(Color.navyPrimary)
+                .multilineTextAlignment(.center)
+            Text(email)
+                .font(.app(13, weight: .semibold))
+                .foregroundStyle(Color.slateTextLight)
+                .environment(\.layoutDirection, .leftToRight)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.slateBorder, lineWidth: 1))
+    }
+}
+
+private struct PersonalInfoScreen: View {
+    @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var auth: AuthStore
+    @State private var first = ""
+    @State private var last = ""
+    @FocusState private var focused: Field?
+
+    private enum Field { case first, last }
+
+    var body: some View {
+        let language = state.language
+        let draft = PersonName(first: first.trimmingCharacters(in: .whitespacesAndNewlines),
+                               last: last.trimmingCharacters(in: .whitespacesAndNewlines))
+        let canSave = !auth.accountBusy && draft != auth.name
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                ProfileGroup {
+                    VStack(alignment: .leading, spacing: 14) {
+                        nameField(AuthCopy.t("firstName", language), placeholder: AuthCopy.t("firstNamePlaceholder", language),
+                                  text: $first, field: .first, contentType: .givenName)
+                        nameField(AuthCopy.t("lastName", language), placeholder: AuthCopy.t("lastNamePlaceholder", language),
+                                  text: $last, field: .last, contentType: .familyName)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(AuthCopy.t("emailLabel", language))
+                                .font(.app(12, weight: .bold))
+                                .foregroundStyle(Color.navyMedium)
+                            HStack(spacing: 8) {
+                                Text(auth.session?.email ?? "")
+                                    .font(.app(15))
+                                    .foregroundStyle(Color.slateTextLight)
+                                    .environment(\.layoutDirection, .leftToRight)
+                                Spacer(minLength: 0)
+                                Image(systemName: "lock.fill")
+                                    .font(.app(12))
+                                    .foregroundStyle(Color.slateMuted)
+                            }
+                            .padding(.horizontal, 14)
+                            .frame(height: 48)
+                            .background(Color.slate50)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.slateBorder, lineWidth: 1))
+                            Text(AuthCopy.t("emailLocked", language))
+                                .font(.app(11))
+                                .foregroundStyle(Color.slateMuted)
+                        }
+                    }
+                    .padding(16)
+                }
+
                 Button {
-                    nameFocused = false
-                    auth.saveFullName(nameDraft)
+                    focused = nil
+                    auth.saveName(first: first, last: last)
                 } label: {
-                    Text(AuthCopy.t("save", language))
-                        .font(.app(14, weight: .bold))
-                        .foregroundStyle(Color.white)
-                        .padding(.horizontal, 18)
-                        .frame(height: 48)
-                        .background(Color.navyPrimary.opacity(canSave ? 1 : 0.4))
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    HStack(spacing: 8) {
+                        if auth.accountBusy { ProgressView().tint(.white).scaleEffect(0.8) }
+                        Text(AuthCopy.t("save", language))
+                    }
+                    .font(.app(15, weight: .black))
+                    .foregroundStyle(Color.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(Color.navyPrimary.opacity(canSave ? 1 : 0.4))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .disabled(!canSave)
+
+                if let message = auth.accountMessage, message != .deleteFailed {
+                    Label(AuthCopy.t(message == .saved ? "saved" : "saveFailed", language),
+                          systemImage: message == .saved ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                        .font(.app(13, weight: .bold))
+                        .foregroundStyle(message == .saved ? Color.successGreen : Color.dangerRed)
+                        .frame(maxWidth: .infinity)
+                }
             }
-            if let message = auth.accountMessage, message != .deleteFailed {
-                Text(AuthCopy.t(message == .saved ? "saved" : "saveFailed", language))
-                    .font(.app(12, weight: .bold))
-                    .foregroundStyle(message == .saved ? Color.successGreen : Color.dangerRed)
-            }
+            .padding(16)
         }
-        .padding(16)
-        .background(Color.slate50)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.slateBorder, lineWidth: 1))
+        .background(Color.slateLight.ignoresSafeArea())
+        .navigationTitle(AuthCopy.t("personalInfo", language))
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            first = auth.name.first
+            last = auth.name.last
+            auth.accountMessage = nil
+        }
+        .onChange(of: auth.name) { _, loaded in
+            // The profile may finish loading after this page opens.
+            if focused == nil { first = loaded.first; last = loaded.last }
+        }
+        .onChange(of: first) { _, _ in auth.accountMessage = nil }
+        .onChange(of: last) { _, _ in auth.accountMessage = nil }
     }
 
-    private func confirmOverlay(_ modal: TaxPulseModal) -> some View {
+    private func nameField(_ title: String, placeholder: String, text: Binding<String>,
+                           field: Field, contentType: UITextContentType) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.app(12, weight: .bold))
+                .foregroundStyle(Color.navyMedium)
+            TextField(placeholder, text: text)
+                .font(.app(15))
+                .foregroundStyle(Color.slateTextDark)
+                .textContentType(contentType)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .submitLabel(field == .first ? .next : .done)
+                .focused($focused, equals: field)
+                .onSubmit { focused = field == .first ? .last : nil }
+                .padding(.horizontal, 14)
+                .frame(height: 48)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(focused == field ? Color.blueAccent : Color.slateBorder, lineWidth: focused == field ? 2 : 1)
+                )
+        }
+    }
+}
+
+private struct PrivacyScreen: View {
+    @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var auth: AuthStore
+    var onDeleted: () -> Void
+    @State private var confirmDelete = false
+
+    var body: some View {
+        let language = state.language
+        ZStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(AuthCopy.t("dangerZone", language))
+                        .font(.app(12, weight: .bold))
+                        .foregroundStyle(Color.slateTextLight)
+                        .padding(.horizontal, 4)
+
+                    ProfileGroup {
+                        Button { confirmDelete = true } label: {
+                            ProfileRow(icon: "trash.fill", tint: .dangerRed,
+                                       title: AuthCopy.t("deleteAccount", language),
+                                       subtitle: AuthCopy.t("deleteAccountSub", language),
+                                       titleColor: .dangerRed, showsChevron: false,
+                                       busy: auth.accountBusy)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(auth.accountBusy)
+                    }
+
+                    if auth.accountMessage == .deleteFailed {
+                        Text(AuthCopy.t("deleteFailed", language))
+                            .font(.app(12, weight: .bold))
+                            .foregroundStyle(Color.dangerRed)
+                    }
+                }
+                .padding(16)
+            }
+
+            if confirmDelete {
+                ProfileConfirmOverlay(modal: TaxPulseModal(
+                    icon: .triangle(Color.dangerRed),
+                    title: AuthCopy.t("deleteTitle", language),
+                    message: AuthCopy.t("deleteMsg", language),
+                    primaryTitle: AuthCopy.t("deleteAccount", language),
+                    primaryAction: {
+                        confirmDelete = false
+                        auth.deleteAccount(onDeleted: onDeleted)
+                    },
+                    secondaryTitle: AuthCopy.t("cancel", language),
+                    secondaryAction: { confirmDelete = false }
+                ))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: confirmDelete)
+        .background(Color.slateLight.ignoresSafeArea())
+        .navigationTitle(AuthCopy.t("privacy", language))
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { auth.accountMessage = nil }
+    }
+}
+
+private struct ProfileGroup<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(spacing: 0) { content }
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.slateBorder, lineWidth: 1))
+    }
+}
+
+private struct ProfileRow: View {
+    var icon: String
+    var tint: Color
+    var title: String
+    var subtitle: String
+    var titleColor: Color = .navyPrimary
+    var showsChevron = true
+    var busy = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.app(15))
+                .foregroundStyle(tint)
+                .frame(width: 36, height: 36)
+                .background(tint.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.app(15, weight: .bold))
+                    .foregroundStyle(titleColor)
+                Text(subtitle)
+                    .font(.app(12))
+                    .foregroundStyle(Color.slateTextLight)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            if busy {
+                ProgressView().tint(tint).scaleEffect(0.8)
+            } else if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.app(13, weight: .bold))
+                    .foregroundStyle(Color.slateMuted)
+                    .flipsForRightToLeftLayoutDirection(true)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct ProfileDivider: View {
+    var body: some View {
+        Rectangle().fill(Color.slateBorder).frame(height: 1).padding(.leading, 62)
+    }
+}
+
+/// Initials avatar: first + last name initials, or the email's first letter.
+struct ProfileInitials: View {
+    var name: PersonName
+    var email: String
+    var size: CGFloat
+
+    var body: some View {
+        Text(initials)
+            .font(.app(size * 0.4, weight: .black))
+            .foregroundStyle(Color.white)
+            .frame(width: size, height: size)
+            .background(LinearGradient(colors: [.navyMedium, .blueAccent], startPoint: .topLeading, endPoint: .bottomTrailing))
+            .clipShape(Circle())
+    }
+
+    private var initials: String {
+        let letters = [name.first.first, name.last.first].compactMap { $0 }
+        if !letters.isEmpty { return String(letters).uppercased() }
+        return email.first.map { String($0).uppercased() } ?? "?"
+    }
+}
+
+private struct ProfileConfirmOverlay: View {
+    var modal: TaxPulseModal
+
+    var body: some View {
         ZStack {
             Color.black.opacity(0.45).ignoresSafeArea()
             modal.padding(.horizontal, 28)

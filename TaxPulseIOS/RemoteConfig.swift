@@ -19,10 +19,19 @@ final class RemoteConfigStore: ObservableObject {
     enum Key: String, CaseIterable {
         /// The official extended due date, `DD-MM-YYYY`. Empty = show the statutory due date.
         case extendedDueDate = "extended_due_date"
+        /// Version live in the App Store, e.g. "1.2.0". Older installs see the update popup.
+        case latestVersion = "ios_latest_version"
+        /// "true" makes the update popup impossible to dismiss.
+        case forceUpdate = "force_update"
+        case storeURL = "ios_store_url"
+        case updateNotesEn = "update_notes_en"
+        case updateNotesAr = "update_notes_ar"
 
         var defaultValue: String {
             switch self {
-            case .extendedDueDate: return ""
+            case .forceUpdate: return "false"
+            case .storeURL: return "https://apps.apple.com/app/id6803842823"
+            case .extendedDueDate, .latestVersion, .updateNotesEn, .updateNotesAr: return ""
             }
         }
     }
@@ -45,6 +54,17 @@ final class RemoteConfigStore: ObservableObject {
     /// The official extended due date, or nil when none is published (or it's malformed).
     var extendedDueDate: ExtensionDateParts? {
         Self.parseDate(string(.extendedDueDate))
+    }
+
+    /// The update policy for this platform; with nothing published, no one is prompted.
+    var versionPolicy: VersionPolicy {
+        VersionPolicy(
+            latestVersion: string(.latestVersion).trimmingCharacters(in: .whitespaces),
+            forceUpdate: string(.forceUpdate).trimmingCharacters(in: .whitespaces).lowercased() == "true",
+            storeURL: string(.storeURL),
+            notesEn: string(.updateNotesEn),
+            notesAr: string(.updateNotesAr)
+        )
     }
 
     /// Called on launch and whenever the app returns to the foreground.

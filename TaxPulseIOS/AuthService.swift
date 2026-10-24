@@ -36,10 +36,20 @@ struct AuthSession: Codable, Equatable {
     var isAccessTokenFresh: Bool { Date().timeIntervalSince1970 < expiresAt - 60 }
 }
 
-/// Remote update policy for this platform (`public.app_versions`).
+/// The user's name from `public.profiles`.
+struct PersonName: Equatable {
+    var first = ""
+    var last = ""
+
+    var full: String { "\(first) \(last)".trimmingCharacters(in: .whitespaces) }
+}
+
+/// Update policy for this platform, published in Firebase Remote Config.
 struct VersionPolicy: Equatable {
-    var latestBuild: Int
-    var minSupportedBuild: Int
+    /// Store version, e.g. "1.2.0". Empty = no update published.
+    var latestVersion: String
+    /// When true the prompt can't be dismissed.
+    var forceUpdate: Bool
     var storeURL: String
     var notesEn: String
     var notesAr: String
@@ -92,30 +102,19 @@ struct SupabaseAuthAPI {
         _ = try await call("POST", "/auth/v1/logout?scope=local", body: nil, bearer: accessToken)
     }
 
-    func fetchFullName(_ s: AuthSession) async throws -> String {
-        let data = try await call("GET", "/rest/v1/profiles?select=full_name&id=eq.\(s.userId)", body: nil, bearer: s.accessToken)
-        let rows = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] ?? []
-        return rows.first?["full_name"] as? String ?? ""
+    func fetchName(_ s: AuthSession) async throws -> PersonName {
+        let data = try await call("GET", "/rest/v1/profiles?select=first_name,last_name&id=eq.\(s.userId)", body: nil, bearer: s.accessToken)
+        let row = ((try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]])?.first
+        return PersonName(first: row?["first_name"] as? String ?? "", last: row?["last_name"] as? String ?? "")
     }
 
-    func updateFullName(_ s: AuthSession, fullName: String) async throws {
-        _ = try await call("PATCH", "/rest/v1/profiles?id=eq.\(s.userId)", body: ["full_name": fullName], bearer: s.accessToken)
+    func updateName(_ s: AuthSession, _ name: PersonName) async throws {
+        _ = try await call("PATCH", "/rest/v1/profiles?id=eq.\(s.userId)",
+                           body: ["first_name": name.first, "last_name": name.last], bearer: s.accessToken)
     }
 
     func deleteAccount(_ s: AuthSession) async throws {
         _ = try await call("POST", "/rest/v1/rpc/delete_my_account", body: [:], bearer: s.accessToken)
-    }
-
-    func fetchVersionPolicy(platform: String = "ios") async throws -> VersionPolicy? {
-        let data = try await call("GET", "/rest/v1/app_versions?select=*&platform=eq.\(platform)", body: nil)
-        guard let row = ((try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]])?.first else { return nil }
-        return VersionPolicy(
-            latestBuild: row["latest_build"] as? Int ?? 0,
-            minSupportedBuild: row["min_supported_build"] as? Int ?? 0,
-            storeURL: row["store_url"] as? String ?? "",
-            notesEn: row["notes_en"] as? String ?? "",
-            notesAr: row["notes_ar"] as? String ?? ""
-        )
     }
 
     private func parseSession(_ data: Data, fallbackEmail: String) throws -> AuthSession {

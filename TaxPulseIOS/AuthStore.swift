@@ -24,8 +24,8 @@ final class AuthStore: ObservableObject {
     /// Set when the server revoked the session, so the sign-in screen can explain why.
     @Published private(set) var signedOutReason: AuthError?
 
-    // Account sheet
-    @Published private(set) var fullName = ""
+    // Profile
+    @Published private(set) var name = PersonName()
     @Published private(set) var accountBusy = false
     @Published var accountMessage: AccountMessage?
 
@@ -140,20 +140,23 @@ final class AuthStore: ObservableObject {
 
     func loadProfile() {
         Task {
-            if let name = try? await withFreshSession({ try await self.api.fetchFullName($0) }) {
-                fullName = name
+            if let loaded = try? await withFreshSession({ try await self.api.fetchName($0) }) {
+                name = loaded
             }
         }
     }
 
-    func saveFullName(_ name: String) {
-        let trimmed = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
+    func saveName(first: String, last: String) {
+        let trimmed = PersonName(
+            first: String(first.trimmingCharacters(in: .whitespacesAndNewlines).prefix(50)),
+            last: String(last.trimmingCharacters(in: .whitespacesAndNewlines).prefix(50))
+        )
         Task {
             accountBusy = true
             defer { accountBusy = false }
             do {
-                try await withFreshSession { try await self.api.updateFullName($0, fullName: trimmed) }
-                fullName = trimmed
+                try await withFreshSession { try await self.api.updateName($0, trimmed) }
+                name = trimmed
                 accountMessage = .saved
             } catch {
                 accountMessage = .saveFailed
@@ -223,7 +226,7 @@ final class AuthStore: ObservableObject {
     private func clearLocalSession() {
         SessionKeychain.clear()
         session = nil
-        fullName = ""
+        name = PersonName()
         accountMessage = nil
         stage = .email
         code = ""
@@ -252,64 +255,73 @@ final class AuthStore: ObservableObject {
     }
 }
 
-/// Reads `public.app_versions` on launch and whenever the app returns to the
-/// foreground. Fails open: if the server can't be reached, nothing is shown.
+/// Turns the update policy from Firebase Remote Config into a prompt. Fails open:
+/// with no published policy (or no connection and no cached one), nothing is shown.
 @MainActor
 final class UpdateStore: ObservableObject {
     enum Prompt: Equatable {
         case none
         /// Dismissible "Update available".
         case optional(VersionPolicy)
-        /// Blocking "Update required": this build is below `min_supported_build`.
+        /// Blocking "Update required" (`force_update` is on).
         case required(VersionPolicy)
     }
 
     @Published private(set) var prompt: Prompt = .none
 
-    private let api = SupabaseAuthAPI()
-    private var lastCheck: Date = .distantPast
-    private static let checkInterval: TimeInterval = 15 * 60
     private static let snooze: TimeInterval = 3 * 24 * 60 * 60
-    private static let dismissedBuildKey = "updateDismissedBuild"
+    private static let dismissedVersionKey = "updateDismissedVersion"
     private static let dismissedAtKey = "updateDismissedAt"
 
-    static var currentBuild: Int {
-        Int(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "") ?? 0
+    static var currentVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
     }
 
     static var versionLabel: String {
-        let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
-        return "\(short) (\(currentBuild))"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        return "\(currentVersion) (\(build))"
     }
 
-    func check(force: Bool = false) {
-        // A hard-blocked user re-checks every time; otherwise at most every 15 minutes.
-        var blocked = false
-        if case .required = prompt { blocked = true }
-        guard force || blocked || Date().timeIntervalSince(lastCheck) > Self.checkInterval else { return }
-        lastCheck = Date()
-        Task {
-            guard let policy = try? await api.fetchVersionPolicy(platform: "ios") else { return }
-            prompt = decide(policy)
-        }
+    /// A blocked user re-fetches on every return to the app, in case the policy was relaxed.
+    var isBlocked: Bool {
+        if case .required = prompt { return true }
+        return false
+    }
+
+    func apply(_ policy: VersionPolicy) {
+        prompt = decide(policy)
     }
 
     func dismissOptional() {
         guard case .optional(let policy) = prompt else { return }
-        UserDefaults.standard.set(policy.latestBuild, forKey: Self.dismissedBuildKey)
+        UserDefaults.standard.set(policy.latestVersion, forKey: Self.dismissedVersionKey)
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.dismissedAtKey)
         prompt = .none
     }
 
     private func decide(_ policy: VersionPolicy) -> Prompt {
-        let build = Self.currentBuild
-        if build < policy.minSupportedBuild { return .required(policy) }
-        if build >= policy.latestBuild { return .none }
-        // "Later" snoozes this particular release for 3 days, then asks again.
-        let dismissedBuild = UserDefaults.standard.integer(forKey: Self.dismissedBuildKey)
+        // Only installs older than the store version are prompted, so a newer build
+        // (in review or TestFlight) never is.
+        guard !policy.latestVersion.isEmpty,
+              Self.compare(Self.currentVersion, policy.latestVersion) == .orderedAscending
+        else { return .none }
+        if policy.forceUpdate { return .required(policy) }
+        // "Later" snoozes this particular version for 3 days, then asks again.
+        let dismissedVersion = UserDefaults.standard.string(forKey: Self.dismissedVersionKey)
         let dismissedAt = UserDefaults.standard.double(forKey: Self.dismissedAtKey)
-        let snoozed = dismissedBuild == policy.latestBuild
+        let snoozed = dismissedVersion == policy.latestVersion
             && Date().timeIntervalSince1970 - dismissedAt < Self.snooze
         return snoozed ? .none : .optional(policy)
+    }
+
+    /// Compares dotted versions numerically ("1.10.0" > "1.9.2"); missing parts count as 0.
+    static func compare(_ a: String, _ b: String) -> ComparisonResult {
+        let lhs = a.split(separator: ".").map { Int($0.filter(\.isNumber)) ?? 0 }
+        let rhs = b.split(separator: ".").map { Int($0.filter(\.isNumber)) ?? 0 }
+        for i in 0..<max(lhs.count, rhs.count) {
+            let x = i < lhs.count ? lhs[i] : 0, y = i < rhs.count ? rhs[i] : 0
+            if x != y { return x < y ? .orderedAscending : .orderedDescending }
+        }
+        return .orderedSame
     }
 }

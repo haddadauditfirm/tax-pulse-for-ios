@@ -38,15 +38,15 @@ struct ContentView: View {
             if signedIn && state.onboardingStep == 3 { state.onboardingStep = 4 }
             if !signedIn && state.onboardingStep > 3 { state.onboardingStep = 3 }
         }
-        // Check for app updates and Remote Config values on launch and every time
-        // the app returns to the foreground.
+        // Fetch Remote Config (update policy + extended due date) on launch and every
+        // time the app returns to the foreground.
         .onChange(of: scenePhase, initial: true) { _, phase in
             guard phase == .active else { return }
-            updates.check()
-            remoteConfig.fetch()
+            remoteConfig.fetch(force: updates.isBlocked)
         }
         .onChange(of: remoteConfig.values, initial: true) { _, _ in
             state.officialExtendedDueDate = remoteConfig.extendedDueDate
+            updates.apply(remoteConfig.versionPolicy)
         }
     }
 
@@ -217,6 +217,10 @@ struct LanguageScreen: View {
             Spacer()
         }
         .padding(.horizontal, 24)
+        .background(
+            LinearGradient(colors: [Color(hex: 0x0F172A), Color(hex: 0x1E293B)], startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea()
+        )
     }
 }
 
@@ -359,7 +363,7 @@ struct HeaderView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 if let session = auth.session {
-                    AccountHeaderButton(email: session.email) { showAccount = true }
+                    AccountHeaderButton(email: session.email, name: auth.name) { showAccount = true }
                 }
                 TutorialHelpButton {
                     state.tutorialTopic = state.selectedTab == .payroll && state.payrollReverseMode
@@ -377,11 +381,14 @@ struct HeaderView: View {
             }
         }
         .accessibilityIdentifier("calculator_header")
-        .sheet(isPresented: $showAccount) {
-            AccountSheet()
+        .fullScreenCover(isPresented: $showAccount) {
+            ProfileScreen()
                 .environmentObject(state)
                 .environmentObject(auth)
         }
+        #if DEBUG
+        .onAppear { if ProcessInfo.processInfo.arguments.contains("-uiProfile") { showAccount = true } }
+        #endif
     }
 }
 
