@@ -178,6 +178,7 @@ private struct ReversePayrollNote: View {
     var tint: Color = .blueAccent
     var value: String? = nil
     var identifier = ""
+    var bodyColor: Color = .slateTextDark
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "info.circle").font(.app(17)).foregroundStyle(tint).padding(.top, 1)
@@ -188,7 +189,7 @@ private struct ReversePayrollNote: View {
                         .environment(\.layoutDirection, .leftToRight).fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier(identifier + "_amount")
                 }
-                Text(bodyText).font(.app(10)).foregroundStyle(Color.slateTextDark).fixedSize(horizontal: false, vertical: true)
+                Text(bodyText).font(.app(10)).foregroundStyle(bodyColor).fixedSize(horizontal: false, vertical: true)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading).background(tint.opacity(0.055))
@@ -322,12 +323,19 @@ struct ReversePayrollFields: View {
                 ReversePayrollRow(title: label("transport"), value: reverseMoney(Double(days) * dailyAmount, state.language, usd: usd), valueColor: .blueAccent)
                     .accessibilityIdentifier("reverse_transport")
             }
-            Text(label("transportExempt")).font(.app(10)).foregroundStyle(Color.slateTextLight)
+            Text(label("transportExempt")).font(.app(10, weight: .medium)).foregroundStyle(Color.blueAccent)
                 .fixedSize(horizontal: false, vertical: true)
             if usd {
                 Text(label("rateHint")).font(.app(11)).foregroundStyle(Color.slateTextLight)
-                BorderedPillButton(title: Copy.t("useStandardRate", state.language)) { state.payrollExchangeRate = "89500" }
-                    .accessibilityIdentifier("reverse_standard_rate")
+                Button { state.payrollExchangeRate = "89500" } label: {
+                    Text(Copy.t("useStandardRate", state.language))
+                        .font(.app(12, weight: .bold)).foregroundStyle(Color.blueAccent)
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .contentShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.slateBorder, lineWidth: 1))
+                }
+                .buttonStyle(.plain).accessibilityIdentifier("reverse_standard_rate")
             }
             AndroidToggleCard(icon: "person.2.fill", title: label("family"), subtitle: label("familyHint"), subtitleLineLimit: nil, isOn: $state.reverseIncludeFamily)
                 .accessibilityIdentifier("reverse_include_family")
@@ -385,7 +393,7 @@ struct ReversePayrollOutcome: View {
                             .accessibilityIdentifier("reverse_gross")
                         Rectangle().fill(Color.blueAccent.opacity(0.1)).frame(height: 1)
                         ReversePayrollRow(title: label("transport"), value: amount(result.transportLbp))
-                        ReversePayrollNote(title: label("exemptTitle"), bodyText: label("transportExempt"))
+                        ReversePayrollNote(title: label("exemptTitle"), bodyText: label("transportExempt"), bodyColor: .blueAccent)
                     }
                     ReversePayrollSection(title: label("deductions"), icon: "doc.text", tint: .alertGold) {
                         ReversePayrollTax(title: label("tax"), value: amount(-result.payroll.taxAmount))

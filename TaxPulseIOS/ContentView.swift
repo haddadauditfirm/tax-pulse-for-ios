@@ -108,8 +108,11 @@ struct OnboardingHost: View {
                 let steps = outgoingStep.map { [$0, displayedStep] } ?? [displayedStep]
                 ZStack {
                     ForEach(steps, id: \.self) { step in
-                        page(step)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        ZStack {
+                            page(step)
+                                .environment(\.layoutDirection, state.language == .arabic ? .rightToLeft : .leftToRight)
+                        }
+                            .frame(width: geometry.size.width, height: geometry.size.height)
                             // A physical transform keeps left/right identical in English and Arabic.
                             .projectionEffect(ProjectionTransform(CGAffineTransform(
                                 translationX: step == displayedStep ? frame.incomingOffset : frame.outgoingOffset, y: 0)))
@@ -124,6 +127,8 @@ struct OnboardingHost: View {
                 .clipShape(HorizontalClip())
             }
         }
+        // The slide canvas is always physical LTR. Only each page's contents inherit Arabic RTL.
+        .environment(\.layoutDirection, .leftToRight)
         .background(
             LinearGradient(colors: [Color(red: 0.027, green: 0.043, blue: 0.098), Color(red: 0.118, green: 0.161, blue: 0.231)], startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea()
@@ -226,8 +231,8 @@ struct LanguageScreen: View {
 
 struct ServiceScreen: View {
     @EnvironmentObject private var state: AppState
-    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 24
-    @ScaledMetric(relativeTo: .headline) private var compactTitleSize: CGFloat = 20
+    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 28
+    @ScaledMetric(relativeTo: .headline) private var compactTitleSize: CGFloat = 24
     @ScaledMetric(relativeTo: .subheadline) private var subtitleSize: CGFloat = 13
 
     var body: some View {
@@ -235,74 +240,73 @@ struct ServiceScreen: View {
             TopBackButton { state.onboardingStep = 2 }
                 .padding(.horizontal, 24)
             GeometryReader { geometry in
-                let width = min(max(geometry.size.width - 32, 0), 720)
-                let columns = width >= 600 ? 3 : 2
+                let width = min(max(geometry.size.width - 40, 0), 720)
                 ViewThatFits(in: .vertical) {
-                    serviceContents(columns: columns, compact: false, useList: false)
-                        .fixedSize(horizontal: false, vertical: true)
-                    serviceContents(columns: columns, compact: true, useList: true)
-                        .fixedSize(horizontal: false, vertical: true)
-                    serviceContents(columns: columns, compact: true, useList: false)
-                        .fixedSize(horizontal: false, vertical: true)
-                    ScrollView {
-                        serviceContents(columns: columns, compact: true, useList: true)
-                    }
+                    serviceContents(style: 0).fixedSize(horizontal: false, vertical: true)
+                    serviceContents(style: 1).fixedSize(horizontal: false, vertical: true)
+                    serviceContents(style: 2).fixedSize(horizontal: false, vertical: true)
+                    ScrollView { serviceContents(style: 2) }
                 }
-                .padding(.top, 8)
-                .frame(width: width, height: max(geometry.size.height - 24, 0), alignment: .center)
+                .frame(width: width, height: max(geometry.size.height - 24, 0), alignment: .top)
                 .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
             }
         }
     }
 
-    private func serviceContents(columns: Int, compact: Bool, useList: Bool) -> some View {
+    private func serviceContents(style: Int) -> some View {
         VStack(spacing: 0) {
             Text(state.language == .arabic ? "اختر نوع الخدمة المطلوبة" : "Choose your service")
-                .font(.app(compact ? compactTitleSize : titleSize, weight: .heavy))
-                .foregroundStyle(Color.white)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+                .font(.app(style == 2 ? compactTitleSize : titleSize, weight: .heavy)).foregroundStyle(Color.white)
+                .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
-            if !compact {
-                Text(state.language == .arabic ? "انقر على إحدى الخدمات للبدء الفوري بحساباتك" : "Select a service below to jump straight in")
-                    .font(.app(subtitleSize))
-                    .foregroundStyle(Color(hex: 0x94A3B8))
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 8)
-            }
-            serviceChoices(columns: columns, compact: compact, useList: useList)
-                .padding(.top, compact ? 12 : 20)
-            TutorialLink(onDarkBackground: true) { state.tutorialTopic = .payroll }
-                .frame(minHeight: 48)
+            Text(state.language == .arabic ? "انقر على إحدى الخدمات للبدء الفوري بحساباتك" : "Select a service below to jump straight in")
+                .font(.app(subtitleSize)).foregroundStyle(Color(hex: 0x94A3B8))
+                .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 8)
-        }
-    }
-
-    private func serviceChoices(columns: Int, compact: Bool, useList: Bool) -> some View {
-        let services = ServiceTab.allCases
-        let rowCount = (services.count + columns - 1) / columns
-        return VStack(spacing: compact ? 8 : 12) {
-            if useList {
-                ForEach(services) { tab in
-                    ServiceSelectionCard(tab: tab, compact: true) { state.chooseService(tab) }
+            VStack(spacing: style == 0 ? 12 : style == 1 ? 10 : 6) {
+                ForEach(ServiceTab.allCases) { tab in
+                    ServiceListRow(tab: tab, style: style) { state.chooseService(tab) }
                 }
-            } else {
-                ForEach(0..<rowCount, id: \.self) { row in
-                    HStack(spacing: compact ? 8 : 12) {
-                        ForEach(Array(services.dropFirst(row * columns).prefix(columns))) { tab in
-                            ServiceSelectionCard(tab: tab, compact: compact) { state.chooseService(tab) }
-                                .frame(maxHeight: .infinity)
-                        }
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-            }
+            }.padding(.top, style == 2 ? 12 : 16)
+            TutorialLink(onDarkBackground: true) { state.tutorialTopic = .payroll }
+                .frame(minHeight: 48).padding(.top, style == 2 ? 8 : 12)
         }
-        .environment(\.layoutDirection, .leftToRight)
     }
 }
 
+private struct ServiceListRow: View {
+    @EnvironmentObject private var state: AppState
+    let tab: ServiceTab
+    let style: Int
+    var action: () -> Void
+    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 16
+    @ScaledMetric(relativeTo: .headline) private var compactTitleSize: CGFloat = 14
+
+    var body: some View {
+        let meta = serviceMeta(tab, language: state.language)
+        let icon: CGFloat = style == 0 ? 44 : style == 1 ? 40 : 28
+        let minimum: CGFloat = style == 0 ? 76 : style == 1 ? 64 : 48
+        Button(action: action) {
+            HStack(spacing: 14) {
+                ServiceIcon(tab: tab, systemName: meta.icon, size: style < 2 ? 24 : 20)
+                    .foregroundStyle(Color.white).frame(width: icon, height: icon)
+                    .background(LinearGradient(colors: meta.gradient, startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                Text(meta.title).font(.app(style < 2 ? titleSize : compactTitleSize, weight: .bold))
+                    .foregroundStyle(Color.white).multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 16).padding(.vertical, style == 0 ? 14 : style == 1 ? 12 : 8)
+            .frame(maxWidth: .infinity, minHeight: minimum)
+            .background(Color.white.opacity(0.05))
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain).accessibilityIdentifier("service_choice_\(tab.rawValue)")
+    }
+}
 
 struct CalculatorShell: View {
     @EnvironmentObject private var state: AppState
@@ -2279,6 +2283,7 @@ struct TopBackButton: View {
             .padding(.top, 16)
             Spacer()
         }
+        .environment(\.layoutDirection, .leftToRight)
     }
 }
 
