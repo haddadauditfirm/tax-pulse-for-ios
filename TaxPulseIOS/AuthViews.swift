@@ -326,7 +326,16 @@ private struct OTPBoxes: View {
     @State private var cursorOn = true
 
     var body: some View {
-        ZStack {
+        HStack(spacing: 8) {
+            ForEach(0..<AuthStore.otpLength, id: \.self) { index in
+                box(at: index)
+            }
+        }
+        .allowsHitTesting(false)
+        // The real field is laid over the boxes at full opacity with invisible text.
+        // A 1×1 / near-transparent field shows the "From Mail" suggestion, but iOS
+        // drops the tap on it without inserting the code.
+        .overlay {
             TextField("", text: $code)
                 .keyboardType(.numberPad)
                 .textContentType(.oneTimeCode)
@@ -334,18 +343,10 @@ private struct OTPBoxes: View {
                 .foregroundStyle(Color.clear)
                 .tint(.clear)
                 .accentColor(.clear)
-                .frame(width: 1, height: 1)
-                .opacity(0.02)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
                 .disabled(disabled)
                 .accessibilityLabel("Verification code")
-
-            HStack(spacing: 8) {
-                ForEach(0..<AuthStore.otpLength, id: \.self) { index in
-                    box(at: index)
-                }
-            }
-            .contentShape(Rectangle())
-            .onTapGesture { focused = true }
         }
         .environment(\.layoutDirection, .leftToRight)
         .onAppear {
