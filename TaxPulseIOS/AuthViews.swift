@@ -16,6 +16,7 @@ enum AuthCopy {
         "verify": ("Verify & continue", "تحقق ومتابعة"),
         "resendIn": ("Resend code in %@", "إعادة إرسال الرمز خلال %@"),
         "resend": ("Didn't get it? Resend code", "لم يصلك؟ أعد إرسال الرمز"),
+        "pasteCode": ("Copied the code? Paste it here", "نسخت الرمز؟ الصقه هنا"),
         "spamTip": ("Can't find it? Check your spam or junk folder.",
                     "لم تجده؟ تحقق من مجلد الرسائل غير المرغوب فيها."),
         "errInvalidEmail": ("Please enter a valid email address.", "يرجى إدخال بريد إلكتروني صالح."),
@@ -249,6 +250,22 @@ private struct AuthCodeStep: View {
                             disabled: auth.isBusy
                         )
                         .modifier(ShakeEffect(travel: shake))
+                        // System paste control: works for codes copied from any mail app
+                        // (Gmail, Outlook…), not only the Mail suggestions above the keyboard.
+                        if auth.code.count < AuthStore.otpLength && !auth.isBusy {
+                            VStack(spacing: 8) {
+                                Text(AuthCopy.t("pasteCode", language))
+                                    .font(.app(12))
+                                    .foregroundStyle(authMuted)
+                                PasteButton(payloadType: String.self) { strings in
+                                    Task { @MainActor in auth.setCode(strings.first ?? "") }
+                                }
+                                .labelStyle(.titleAndIcon)
+                                .buttonBorderShape(.capsule)
+                                .tint(authBlue)
+                            }
+                            .padding(.top, 14)
+                        }
                         if let error = auth.error {
                             AuthInlineError(text: AuthCopy.error(error, language))
                                 .transition(.opacity.combined(with: .move(edge: .top)))
