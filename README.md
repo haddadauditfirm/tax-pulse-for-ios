@@ -26,3 +26,9 @@ Native SwiftUI iOS port of the uploaded Android/Kotlin Tax Pulse app.
 4. Build and run.
 
 The project targets iOS 17 and uses only SwiftUI/Foundation, with no external dependencies.
+
+## Build and publish without a Mac
+
+The repository includes a `codemagic.yaml` that builds, signs, tests, and uploads
+the app to TestFlight / App Store Connect from Codemagic's cloud Macs.
+See [CODEMAGIC.md](CODEMAGIC.md) for the one-time setup.

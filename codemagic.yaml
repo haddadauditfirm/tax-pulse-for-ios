@@ -1,0 +1,55 @@
+# Codemagic CI/CD — builds Tax Pulse on a cloud Mac and uploads it to App Store Connect.
+# Setup steps (no Mac needed) are in CODEMAGIC.md.
+workflows:
+  ios-app-store:
+    name: Tax Pulse iOS — App Store
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      # Must match the name you give the App Store Connect API key in
+      # Codemagic: Team settings > Integrations > Developer Portal.
+      app_store_connect: TaxPulse ASC Key
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.haddad.taxpulse
+      vars:
+        XCODE_PROJECT: "TaxPulseIOS.xcodeproj"
+        XCODE_SCHEME: "TaxPulseIOS"
+        # The app's numeric "Apple ID" from App Store Connect > App Information.
+        APP_STORE_APPLE_ID: "0000000000"
+      xcode: latest
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: "v*"
+    scripts:
+      - name: Apply code signing profiles to the Xcode project
+        script: xcode-project use-profiles
+      - name: Run unit tests
+        script: |
+          xcode-project run-tests \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+        test_report: build/ios/test/*.xml
+      - name: Pick the next build number
+        script: |
+          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" || echo 18)
+          echo "NEXT_BUILD_NUMBER=$((LATEST + 1))" >> $CM_ENV
+      - name: Build signed .ipa
+        script: |
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME" \
+            --archive-xcargs "CURRENT_PROJECT_VERSION=$NEXT_BUILD_NUMBER"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        # Flip to true once you are ready to send builds for App Review automatically.
+        submit_to_app_store: false
