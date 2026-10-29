@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 /// A branded Tax Pulse modal currently on screen, if any. Hosted once at the
 /// calculator shell (`AppModalHost`) rather than per-tab, so only one can show
@@ -18,13 +19,31 @@ enum AppModal: Identifiable, Equatable {
 final class AppState: ObservableObject {
     static let minimumPenaltyYear = 2024
     @Published var activeModal: AppModal?
+    @Published var tutorialTopic: TutorialTopic?
     /// DEBUG-only: makes result cards render on launch so QA can screenshot them.
     @Published var debugPreCalculated = false
     /// DEBUG-only: hides the input cards so a result card can be captured on screen.
     @Published var debugResultOnly = false
-    @Published var onboardingStep = 1
+    @Published var navigationForward = true
+    @Published var onboardingStep = 1 {
+        willSet { navigationForward = newValue >= onboardingStep }
+    }
+    @Published var payrollReverseMode = false
     @Published var selectedTab: ServiceTab = .payroll
     @Published var language: AppLanguage = .english
+
+    @Published var reverseNetTargetLbp = ""
+    @Published var reverseNetTargetUsd = ""
+    var reverseNetTarget: String {
+        get { payrollCurrency == .usd ? reverseNetTargetUsd : reverseNetTargetLbp }
+        set {
+            if payrollCurrency == .usd { reverseNetTargetUsd = newValue }
+            else { reverseNetTargetLbp = newValue }
+        }
+    }
+    @Published var reverseWorkingDays = ""
+    @Published var reverseDailyTransport = ""
+    @Published var reverseIncludeFamily = true
 
     @Published var salaryPeriod: SalaryPeriod = .monthly
     @Published var employmentType: EmploymentType = .monthly
@@ -51,6 +70,29 @@ final class AppState: ObservableObject {
     @Published var profitChildren = 0
     @Published var profitOwnerName = ""
 
+    @Published var propertyYear = [2025, 2026].contains(UserDefaults.standard.integer(forKey: "propertyYear"))
+        ? UserDefaults.standard.integer(forKey: "propertyYear") : 2025 {
+        didSet { defaults.set(propertyYear, forKey: "propertyYear") }
+    }
+    @Published var propertyRevenue = UserDefaults.standard.string(forKey: "propertyRevenue") ?? "" {
+        didSet { defaults.set(propertyRevenue, forKey: "propertyRevenue") }
+    }
+    @Published var propertyDeduction = UserDefaults.standard.string(forKey: "propertyDeduction") ?? "" {
+        didSet { defaults.set(propertyDeduction, forKey: "propertyDeduction") }
+    }
+    @Published var propertyCurrency = CurrencyMode(rawValue: UserDefaults.standard.string(forKey: "propertyCurrency") ?? "LBP") ?? .lbp {
+        didSet { defaults.set(propertyCurrency.rawValue, forKey: "propertyCurrency") }
+    }
+    @Published var propertyRevenueUsd = UserDefaults.standard.string(forKey: "propertyRevenueUsd") ?? "" {
+        didSet { defaults.set(propertyRevenueUsd, forKey: "propertyRevenueUsd") }
+    }
+    @Published var propertyDeductionUsd = UserDefaults.standard.string(forKey: "propertyDeductionUsd") ?? "" {
+        didSet { defaults.set(propertyDeductionUsd, forKey: "propertyDeductionUsd") }
+    }
+    @Published var propertyExchangeRate = UserDefaults.standard.string(forKey: "propertyExchangeRate") ?? "" {
+        didSet { defaults.set(propertyExchangeRate, forKey: "propertyExchangeRate") }
+    }
+
     @Published var penaltyCompanyType = "SAL"
     @Published var penaltyTaxType = "PAYROLL"
     @Published var penaltyAmount = ""
@@ -73,6 +115,10 @@ final class AppState: ObservableObject {
     @Published var extensionMonth = "4"
     @Published var extensionYearValue = "2026"
     @Published var extensionMessage: String?
+    /// Official extended due date published in Firebase Remote Config (`extended_due_date`).
+    var officialExtendedDueDate: ExtensionDateParts? {
+        didSet { syncExtensionDate() }
+    }
     @Published private(set) var users: [UserRecord] = DemoSeed.users
     @Published private(set) var companies: [CompanyRecord] = DemoSeed.companies
     @Published private(set) var employees: [EmployeeRecord] = DemoSeed.employees
@@ -92,6 +138,7 @@ final class AppState: ObservableObject {
             guard let index = args.firstIndex(of: flag), index + 1 < args.count else { return nil }
             return args[index + 1]
         }
+        // Steps: 1 welcome, 2 language, 3 sign in, 4 service, 5 calculator.
         if let raw = value(after: "-uiStep"), let step = Int(raw) {
             onboardingStep = step
         }
@@ -104,6 +151,7 @@ final class AppState: ObservableObject {
             case "profit": selectedTab = .profit
             case "penalties": selectedTab = .penalties
             case "extensions": selectedTab = .extensions
+            case "property": selectedTab = .property
             default: break
             }
         }
@@ -216,11 +264,15 @@ final class AppState: ObservableObject {
     }
 
     func chooseService(_ tab: ServiceTab) {
+        if selectedTab != tab { payrollReverseMode = false }
         selectedTab = tab
-        onboardingStep = 4
+        onboardingStep = 5
     }
 
     func resetPayroll() {
+        payrollReverseMode = false
+        reverseNetTargetLbp = ""; reverseNetTargetUsd = ""
+        reverseWorkingDays = ""; reverseDailyTransport = ""; reverseIncludeFamily = true
         salaryPeriod = .monthly
         employmentType = .monthly
         payrollCurrency = .lbp
@@ -237,6 +289,16 @@ final class AppState: ObservableObject {
         useFamilyRebates = true
         sicknessCeilingOverride = ""
         familyCeilingOverride = ""
+    }
+
+    func resetPropertyTax() {
+        propertyYear = 2025
+        propertyRevenue = ""
+        propertyDeduction = ""
+        propertyCurrency = .lbp
+        propertyRevenueUsd = ""
+        propertyDeductionUsd = ""
+        propertyExchangeRate = ""
     }
 
     /// Full reset for the Tax Penalties tab: every numeric/date field returns to its
@@ -350,20 +412,13 @@ final class AppState: ObservableObject {
         penaltyDueYear = "\(auto.year)"
     }
 
+    /// Shows the official extended due date published in Firebase, or the
+    /// statutory due date when none has been published.
     func syncExtensionDate() {
-        let auto = extensionAutoDate
-        if let savedValue = defaults.string(forKey: extensionKey), !savedValue.isEmpty {
-            let parts = savedValue.split(separator: "/").map(String.init)
-            if parts.count == 3 {
-                extensionDay = parts[0]
-                extensionMonth = parts[1]
-                extensionYearValue = parts[2]
-            }
-        } else {
-            extensionDay = "\(auto.day)"
-            extensionMonth = "\(auto.month)"
-            extensionYearValue = "\(auto.year)"
-        }
+        let date = officialExtendedDueDate ?? extensionAutoDate
+        extensionDay = "\(date.day)"
+        extensionMonth = "\(date.month)"
+        extensionYearValue = "\(date.year)"
         extensionMessage = nil
     }
 
@@ -391,8 +446,8 @@ final class AppState: ObservableObject {
     }
 
     func retrieveExtension() {
-        let key = extensionKey
-        if let value = defaults.string(forKey: key), !value.isEmpty {
+        if let date = officialExtendedDueDate {
+            let value = "\(date.day)/\(date.month)/\(date.year)"
             extensionMessage = language == .arabic ? "المهلة الرسمية المسجلة هي: \(value)" : "The official registered extended deadline is: \(value)"
         } else {
             extensionMessage = language == .arabic ? "لا توجد مهلة مسجلة بعد." : "No registered deadline extensions found yet."

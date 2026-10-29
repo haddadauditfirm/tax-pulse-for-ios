@@ -1,297 +1,189 @@
 import SwiftUI
 
+/// Steps: 1 welcome → 2 language → 3 sign in (skipped when signed in) → 4 service → 5 app.
 struct ContentView: View {
     @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var auth: AuthStore
+    @EnvironmentObject private var updates: UpdateStore
+    @EnvironmentObject private var remoteConfig: RemoteConfigStore
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Group {
-            if state.onboardingStep < 4 {
+        GeometryReader { geometry in
+            ZStack {
                 OnboardingHost()
-            } else {
-                CalculatorShell()
+                .allowsHitTesting(state.tutorialTopic == nil)
+                .accessibilityHidden(state.tutorialTopic != nil)
+                .zIndex(0)
+
+                if let topic = state.tutorialTopic {
+                    TutorialView(initialTopic: topic)
+                        .environmentObject(state)
+                        .preferredColorScheme(.light)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .transition(tutorialTransition(travel: geometry.size.height / 32))
+                        .zIndex(1)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(reduceMotion ? nil : .linear(duration: 0.2), value: state.tutorialTopic != nil)
         }
         .environment(\.layoutDirection, state.language == .arabic ? .rightToLeft : .leftToRight)
+        .preferredColorScheme(state.tutorialTopic != nil ? .light : state.onboardingStep == 1 ? .dark : nil)
+        .overlay { AppUpdateHost() }
+        // Signing in moves on to the service chooser; signing out (or deleting the
+        // account) from anywhere past the gate returns to the sign-in screen.
+        .onChange(of: auth.isSignedIn) { _, signedIn in
+            if signedIn && state.onboardingStep == 3 { state.onboardingStep = 4 }
+            if !signedIn && state.onboardingStep > 3 { state.onboardingStep = 3 }
+        }
+        // Fetch Remote Config (update policy + extended due date) on launch and every
+        // time the app returns to the foreground.
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            guard phase == .active else { return }
+            remoteConfig.fetch(force: updates.isBlocked)
+        }
+        .onChange(of: remoteConfig.values, initial: true) { _, _ in
+            state.officialExtendedDueDate = remoteConfig.extendedDueDate
+            updates.apply(remoteConfig.versionPolicy)
+        }
+    }
+
+    private func tutorialTransition(travel: CGFloat) -> AnyTransition {
+        if reduceMotion { return .identity }
+        return .asymmetric(
+            insertion: .modifier(
+                active: TutorialMotionModifier(progress: 0, travel: travel, removing: false),
+                identity: TutorialMotionModifier(progress: 1, travel: travel, removing: false)),
+            removal: .modifier(
+                active: TutorialMotionModifier(progress: 0, travel: travel, removing: true),
+                identity: TutorialMotionModifier(progress: 1, travel: travel, removing: true))
+        )
+    }
+}
+
+/// Android fades the guide over 180ms and moves it over 200ms, in both directions.
+private struct TutorialMotionModifier: ViewModifier, Animatable {
+    var progress: Double
+    let travel: CGFloat
+    let removing: Bool
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let elapsed = removing ? 1 - progress : progress
+        let fade = TaxPulseMotion.easedProgress(elapsed / 0.9)
+        let movement = TaxPulseMotion.easedProgress(elapsed)
+        return content
+            .opacity(removing ? 1 - fade : fade)
+            .offset(y: travel * CGFloat(removing ? movement : 1 - movement))
+    }
+}
+
+/// Clips horizontally to the view's bounds but leaves the top and bottom open, so
+/// backgrounds that ignore the safe area still reach the screen edges.
+private struct HorizontalClip: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path(rect.insetBy(dx: 0, dy: -10_000))
     }
 }
 
 struct OnboardingHost: View {
     @EnvironmentObject private var state: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var displayedStep = 1
+    @State private var outgoingStep: Int?
+    @State private var transitionStarted = Date()
 
     var body: some View {
-        ZStack {
+        GeometryReader { geometry in
+            TimelineView(.animation(paused: outgoingStep == nil || reduceMotion)) { timeline in
+                let frame = OnboardingSlideFrame(from: outgoingStep ?? displayedStep, to: displayedStep,
+                    width: geometry.size.width,
+                    elapsed: outgoingStep == nil || reduceMotion ? OnboardingSlideFrame.duration : timeline.date.timeIntervalSince(transitionStarted))
+                let steps = outgoingStep.map { [$0, displayedStep] } ?? [displayedStep]
+                ZStack {
+                    ForEach(steps, id: \.self) { step in
+                        ZStack {
+                            page(step)
+                                .environment(\.layoutDirection, state.language == .arabic ? .rightToLeft : .leftToRight)
+                        }
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            // A physical transform keeps left/right identical in English and Arabic.
+                            .projectionEffect(ProjectionTransform(CGAffineTransform(
+                                translationX: step == displayedStep ? frame.incomingOffset : frame.outgoingOffset, y: 0)))
+                            .opacity(step == displayedStep ? frame.incomingOpacity : frame.outgoingOpacity)
+                            .allowsHitTesting(step == displayedStep && outgoingStep == nil)
+                            .accessibilityHidden(step != displayedStep)
+                            .zIndex(step == displayedStep ? 1 : 0)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Preserve the developer's full-bleed safe-area backgrounds.
+                .clipShape(HorizontalClip())
+            }
+        }
+        // The slide canvas is always physical LTR. Only each page's contents inherit Arabic RTL.
+        .environment(\.layoutDirection, .leftToRight)
+        .background(
             LinearGradient(colors: [Color(red: 0.027, green: 0.043, blue: 0.098), Color(red: 0.118, green: 0.161, blue: 0.231)], startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea()
-
-            switch state.onboardingStep {
-            case 1:
-                WelcomeScreen()
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-            case 2:
-                LanguageScreen()
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-            default:
-                ServiceScreen()
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
-        }
-        .animation(.easeInOut(duration: 0.32), value: state.onboardingStep)
-    }
-}
-
-/// Welcome screen. Intentionally English-only and LTR in every locale, matching
-/// Android where `OnboardingWelcomeScreen` ignores the language argument.
-struct WelcomeScreen: View {
-    @EnvironmentObject private var state: AppState
-    @State private var appeared = false
-    @State private var heartbeat = false
-    @State private var bgScale1 = false
-    @State private var bgScale2 = false
-
-    var body: some View {
-        GeometryReader { geo in
-            ZStack {
-                LinearGradient(
-                    colors: [Color(hex: 0x070B19), Color(hex: 0x0F172A), Color(hex: 0x1E293B)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea()
-
-                // Two slow breathing circles, matching Android's bg_pulse transition.
-                Circle()
-                    .fill(Color(hex: 0x3B82F6).opacity(0.08))
-                    .frame(width: geo.size.width, height: geo.size.width)
-                    .scaleEffect(bgScale1 ? 1.2 : 0.8)
-                    .position(x: geo.size.width * 0.3, y: geo.size.height * 0.3)
-                    .animation(.easeInOut(duration: 4).repeatForever(autoreverses: true), value: bgScale1)
-                Circle()
-                    .fill(Color(hex: 0x60A5FA).opacity(0.04))
-                    .frame(width: geo.size.width * 0.9, height: geo.size.width * 0.9)
-                    .scaleEffect(bgScale2 ? 0.9 : 1.2)
-                    .position(x: geo.size.width * 0.7, y: geo.size.height * 0.6)
-                    .animation(.easeInOut(duration: 5).repeatForever(autoreverses: true), value: bgScale2)
-
-                VStack(spacing: 0) {
-                    Spacer(minLength: 0)
-
-                    WelcomeBrandLogo(size: 100)
-                        .scaleEffect(heartbeat ? 1.15 : 0.9)
-                        .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: heartbeat)
-                        .opacity(appeared ? 1 : 0)
-                        .scaleEffect(appeared ? 1 : 0.6)
-                        .animation(.easeOut(duration: 0.7), value: appeared)
-
-                    Spacer().frame(height: 32)
-
-                    welcomeCard
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : 30)
-                        .animation(.easeOut(duration: 0.8).delay(0.2), value: appeared)
-
-                    Spacer().frame(height: 40)
-
-                    EnterButton { state.onboardingStep = 2 }
-                        .frame(width: geo.size.width * 0.75)
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : 30)
-                        .animation(.easeOut(duration: 0.8).delay(0.5), value: appeared)
-
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 24)
-                .frame(maxWidth: .infinity)
-            }
-        }
-        .environment(\.layoutDirection, .leftToRight)
-        .onAppear {
-            appeared = true
-            heartbeat = true
-            bgScale1 = true
-            bgScale2 = true
-        }
-    }
-
-    private var welcomeCard: some View {
-        VStack(spacing: 0) {
-            // Forced onto exactly two lines: "Welcome to" / "Tax Pulse".
-            VStack(spacing: 0) {
-                Text("Welcome to")
-                Text("Tax Pulse")
-            }
-            .font(.app(30, weight: .black))
-            .kerning(0.5)
-            .multilineTextAlignment(.center)
-            .foregroundStyle(
-                LinearGradient(
-                    colors: [Color.white, Color(hex: 0x93C5FD), Color(hex: 0x2563EB)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
-            .fixedSize(horizontal: false, vertical: true)
-
-            Spacer().frame(height: 10)
-            Text("Smarter tax simplified for you.")
-                .font(.app(15, weight: .medium))
-                .kerning(0.2)
-                .foregroundStyle(Color(hex: 0x94A3B8))
-                .multilineTextAlignment(.center)
-
-            Spacer().frame(height: 24)
-            HeartRateLine(color: Color(hex: 0x3B82F6))
-                .frame(height: 96)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 12)
-
-            Spacer().frame(height: 20)
-            Rectangle()
-                .fill(Color.white.opacity(0.15))
-                .frame(width: 96, height: 1.5)
-
-            Spacer().frame(height: 14)
-            Text("Developed by Haddad Audit Firm")
-                .font(.app(11, weight: .bold))
-                .kerning(1)
-                .foregroundStyle(Color(hex: 0x60A5FA).opacity(0.85))
-                .multilineTextAlignment(.center)
-
-            Spacer().frame(height: 4)
-            Text("Certified Auditors and Tax Advisors")
-                .font(.app(10))
-                .kerning(0.5)
-                .foregroundStyle(Color.white.opacity(0.6))
-                .multilineTextAlignment(.center)
-        }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 32)
-        .frame(maxWidth: .infinity)
-        .background(Color.white.opacity(0.03))
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.35), radius: 16, y: 8)
+        .onChange(of: state.onboardingStep, initial: true) { previous, next in
+            guard next != displayedStep else { return }
+            outgoingStep = reduceMotion || previous == next ? nil : displayedStep
+            displayedStep = next
+            transitionStarted = Date()
+        }
+        .onChange(of: reduceMotion) { _, enabled in
+            if enabled { outgoingStep = nil }
+        }
+        .task(id: transitionStarted) {
+            guard outgoingStep != nil else { return }
+            do {
+                try await Task.sleep(for: .seconds(OnboardingSlideFrame.duration))
+            } catch { return }
+            guard !Task.isCancelled else { return }
+            outgoingStep = nil
+        }
+    }
+
+    @ViewBuilder private func page(_ step: Int) -> some View {
+        switch step {
+        case 1: WelcomeScreen()
+        case 2: LanguageScreen()
+        case 3: AuthFlowView()
+        case 4: ServiceScreen()
+        default: CalculatorShell()
+        }
     }
 }
 
-struct EnterButton: View {
-    var action: () -> Void
-    @State private var pressed = false
+/// Both pages share Compose's 360ms FastOutSlowIn slide and crossfade clock.
+struct OnboardingSlideFrame {
+    static let duration = 0.36
+    let incomingOffset: CGFloat
+    let outgoingOffset: CGFloat
+    let incomingOpacity: Double
+    let outgoingOpacity: Double
 
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Text("ENTER")
-                    .font(.app(16, weight: .heavy))
-                    .kerning(1.5)
-                Image(systemName: "arrow.right")
-                    .font(.app(20, weight: .semibold))
-            }
-            .foregroundStyle(Color.white)
-            .frame(maxWidth: .infinity)
-            .frame(height: 58)
-            .background(
-                LinearGradient(
-                    colors: [Color(hex: 0x1D4ED8), Color(hex: 0x2563EB), Color(hex: 0x3B82F6)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .shadow(color: Color(hex: 0x2563EB).opacity(0.45), radius: 12, y: 6)
-        }
-        .buttonStyle(.plain)
-        .scaleEffect(pressed ? 0.94 : 1)
-        .animation(.spring(response: 0.35, dampingFraction: 0.55), value: pressed)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in pressed = true }
-                .onEnded { _ in pressed = false }
-        )
-        .accessibilityLabel("Enter")
-    }
-}
-
-/// The circular brand mark used on the welcome screen — a direct port of Android's
-/// `ic_launcher_foreground` vector (108×108 viewport) inside Android's glow circle.
-struct WelcomeBrandLogo: View {
-    var size: CGFloat
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(Color.white.opacity(0.03))
-                .overlay(
-                    Circle().stroke(
-                        LinearGradient(
-                            colors: [Color(hex: 0x3B82F6), Color(hex: 0x60A5FA).opacity(0.5)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1.5
-                    )
-                )
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [Color(hex: 0x3B82F6).opacity(0.4), Color.clear],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: size * 0.36
-                    )
-                )
-                .frame(width: size * 0.72, height: size * 0.72)
-            TPPulseMark()
-                .frame(width: size * 0.52, height: size * 0.52)
-        }
-        .frame(width: size, height: size)
-        .accessibilityLabel("Tax Pulse logo")
-    }
-}
-
-/// Vector "TP + ECG" mark, coordinates taken 1:1 from Android's launcher foreground.
-struct TPPulseMark: View {
-    var body: some View {
-        Canvas { context, size in
-            let s = min(size.width, size.height) / 108.0
-            func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * s, y: y * s) }
-
-            context.fill(
-                Path(ellipseIn: CGRect(x: 16 * s, y: 16 * s, width: 76 * s, height: 76 * s)),
-                with: .color(Color(hex: 0x0284C7).opacity(0.10))
-            )
-
-            var t = Path()
-            t.move(to: p(24, 40)); t.addLine(to: p(48, 40))
-            t.move(to: p(36, 40)); t.addLine(to: p(36, 68))
-            context.stroke(t, with: .color(.white),
-                           style: StrokeStyle(lineWidth: 7 * s, lineCap: .round, lineJoin: .round))
-
-            var pp = Path()
-            pp.move(to: p(58, 40)); pp.addLine(to: p(58, 68))
-            pp.move(to: p(58, 40)); pp.addLine(to: p(68, 40))
-            pp.addCurve(to: p(68, 54), control1: p(74, 40), control2: p(74, 54))
-            pp.addLine(to: p(58, 54))
-            context.stroke(pp, with: .color(Color(hex: 0x38BDF8)),
-                           style: StrokeStyle(lineWidth: 7 * s, lineCap: .round, lineJoin: .round))
-
-            var ecg = Path()
-            ecg.move(to: p(18, 78))
-            ecg.addLine(to: p(38, 78))
-            ecg.addLine(to: p(44, 58))
-            ecg.addLine(to: p(50, 90))
-            ecg.addLine(to: p(56, 78))
-            ecg.addLine(to: p(90, 78))
-            context.stroke(ecg, with: .color(Color(hex: 0x38BDF8)),
-                           style: StrokeStyle(lineWidth: 5 * s, lineCap: .round, lineJoin: .round))
-        }
+    init(from: Int, to: Int, width: CGFloat, elapsed: TimeInterval) {
+        let progress = TaxPulseMotion.easedProgress(elapsed / Self.duration)
+        let direction: CGFloat = to >= from ? 1 : -1
+        incomingOffset = width * CGFloat(1 - progress) * direction
+        outgoingOffset = -width * CGFloat(progress) * direction
+        incomingOpacity = progress
+        outgoingOpacity = 1 - progress
     }
 }
 
 struct LanguageScreen: View {
     @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var auth: AuthStore
 
     var body: some View {
         VStack(spacing: 0) {
@@ -300,9 +192,7 @@ struct LanguageScreen: View {
             // cards begin higher on screen, matching Android — only the trailing
             // Spacer is flexible, absorbing the remaining space at the bottom.
             Spacer().frame(height: 24)
-            Image(systemName: "globe")
-                .font(.app(52, weight: .regular))
-                .foregroundStyle(Color(hex: 0x60A5FA))
+            LanguageGlobe(size: 52, tint: .languageBlue)
                 .frame(height: 64)
                 .padding(.bottom, 16)
             Text(state.language == .arabic ? "اختر لغتك المفضلة" : "Choose the language")
@@ -321,54 +211,104 @@ struct LanguageScreen: View {
             HStack(spacing: 16) {
                 LanguageCard(title: "English", subtitle: "Smarter tax simplified", code: "EN", selected: state.language == .english) {
                     state.language = .english
-                    state.onboardingStep = 3
+                    state.onboardingStep = auth.isSignedIn ? 4 : 3
                 }
                 LanguageCard(title: "العربية", subtitle: "الضرائب الذكية مبسطة لأجلك", code: "AR", selected: state.language == .arabic) {
                     state.language = .arabic
-                    state.onboardingStep = 3
+                    state.onboardingStep = auth.isSignedIn ? 4 : 3
                 }
             }
             .environment(\.layoutDirection, .leftToRight)
             Spacer()
         }
         .padding(.horizontal, 24)
+        .background(
+            LinearGradient(colors: [Color(hex: 0x0F172A), Color(hex: 0x1E293B)], startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea()
+        )
     }
 }
 
 struct ServiceScreen: View {
     @EnvironmentObject private var state: AppState
+    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 28
+    @ScaledMetric(relativeTo: .headline) private var compactTitleSize: CGFloat = 24
+    @ScaledMetric(relativeTo: .subheadline) private var subtitleSize: CGFloat = 13
+
+    private var orderedServices: [ServiceTab] {
+        state.language == .arabic ? [.payroll, .profit, .property, .penalties, .extensions] : ServiceTab.allCases
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             TopBackButton { state.onboardingStep = 2 }
-            Spacer()
-            Text(state.language == .arabic ? "اختر نوع الخدمة المطلوبة" : "Choose your service")
-                .font(.app(24, weight: .heavy))
-                .foregroundStyle(Color.white)
-                .multilineTextAlignment(.center)
-            Text(state.language == .arabic ? "انقر على إحدى الخدمات للبدء الفوري بحساباتك" : "Select a service below to jump straight in")
-                .font(.app(13))
-                .foregroundStyle(Color(hex: 0x94A3B8))
-                .multilineTextAlignment(.center)
-                .padding(.top, 8)
-                .padding(.bottom, 32)
-
-            // The 2x2 service grid keeps the same physical arrangement in Arabic as in
-            // English (payroll top-left … extensions bottom-right), so it is pinned LTR.
-            VStack(spacing: 16) {
-                HStack(spacing: 16) {
-                    ServiceSelectionCard(tab: .payroll) { state.chooseService(.payroll) }
-                    ServiceSelectionCard(tab: .profit) { state.chooseService(.profit) }
+                .padding(.horizontal, 24)
+            GeometryReader { geometry in
+                let width = min(max(geometry.size.width - 40, 0), 720)
+                ViewThatFits(in: .vertical) {
+                    serviceContents(style: 0).fixedSize(horizontal: false, vertical: true)
+                    serviceContents(style: 1).fixedSize(horizontal: false, vertical: true)
+                    serviceContents(style: 2).fixedSize(horizontal: false, vertical: true)
+                    ScrollView { serviceContents(style: 2) }
                 }
-                HStack(spacing: 16) {
-                    ServiceSelectionCard(tab: .penalties) { state.chooseService(.penalties) }
-                    ServiceSelectionCard(tab: .extensions) { state.chooseService(.extensions) }
-                }
+                .frame(width: width, height: max(geometry.size.height - 24, 0), alignment: .top)
+                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
             }
-            .environment(\.layoutDirection, .leftToRight)
-            Spacer()
         }
-        .padding(.horizontal, 24)
+    }
+
+    private func serviceContents(style: Int) -> some View {
+        VStack(spacing: 0) {
+            Text(state.language == .arabic ? "اختر نوع الخدمة المطلوبة" : "Choose your service")
+                .font(.app(style == 2 ? compactTitleSize : titleSize, weight: .heavy)).foregroundStyle(Color.white)
+                .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
+            Text(state.language == .arabic ? "انقر على إحدى الخدمات للبدء الفوري بحساباتك" : "Select a service below to jump straight in")
+                .font(.app(subtitleSize)).foregroundStyle(Color(hex: 0x94A3B8))
+                .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 8)
+            VStack(spacing: style == 0 ? 12 : style == 1 ? 10 : 6) {
+                ForEach(orderedServices) { tab in
+                    ServiceListRow(tab: tab, style: style) { state.chooseService(tab) }
+                }
+            }.padding(.top, style == 2 ? 12 : 16)
+            TutorialLink(onDarkBackground: true) { state.tutorialTopic = .payroll }
+                .frame(minHeight: 48).padding(.top, style == 2 ? 8 : 12)
+        }
+    }
+}
+
+private struct ServiceListRow: View {
+    @EnvironmentObject private var state: AppState
+    let tab: ServiceTab
+    let style: Int
+    var action: () -> Void
+    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 16
+    @ScaledMetric(relativeTo: .headline) private var compactTitleSize: CGFloat = 14
+
+    var body: some View {
+        let meta = serviceMeta(tab, language: state.language)
+        let icon: CGFloat = style == 0 ? 44 : style == 1 ? 40 : 28
+        let minimum: CGFloat = style == 0 ? 76 : style == 1 ? 64 : 48
+        Button(action: action) {
+            HStack(spacing: 14) {
+                ServiceIcon(tab: tab, systemName: meta.icon, size: style < 2 ? 24 : 20)
+                    .foregroundStyle(Color.white).frame(width: icon, height: icon)
+                    .background(LinearGradient(colors: meta.gradient, startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                Text(meta.title).font(.app(style < 2 ? titleSize : compactTitleSize, weight: .bold))
+                    .foregroundStyle(Color.white).multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 16).padding(.vertical, style == 0 ? 14 : style == 1 ? 12 : 8)
+            .frame(maxWidth: .infinity, minHeight: minimum)
+            .background(Color.white.opacity(0.05))
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain).accessibilityIdentifier("service_choice_\(tab.rawValue)")
     }
 }
 
@@ -387,24 +327,25 @@ struct CalculatorShell: View {
                     case .profit: ProfitCalculatorTab()
                     case .penalties: PenaltiesCalculatorTab()
                     case .extensions: ExtensionsCalculatorTab()
+                    case .property: PropertyTaxCalculatorTab()
                     }
 
                     ContactCard()
                 }
                 .padding(16)
             }
-            .background(Color.slateLight.ignoresSafeArea())
+            // Dismiss on blank page space without attaching a tap recognizer over
+            // the fields and selectors. Dragging and the keypad Done button also dismiss.
+            .background {
+                Color.slateLight.ignoresSafeArea()
+                    .onTapGesture {
+                        UIApplication.shared.sendAction(
+                            #selector(UIResponder.resignFirstResponder),
+                            to: nil, from: nil, for: nil
+                        )
+                    }
+            }
             .scrollDismissesKeyboard(.interactively)
-            // Android dismisses the keyboard on any tap outside a field; mirror that
-            // without swallowing taps on the controls themselves.
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    UIApplication.shared.sendAction(
-                        #selector(UIResponder.resignFirstResponder),
-                        to: nil, from: nil, for: nil
-                    )
-                }
-            )
 
             // Branded modal host — year restriction, extension same-date warning,
             // extension saved. Mounted once here so any tab can trigger it.
@@ -415,27 +356,47 @@ struct CalculatorShell: View {
 
 struct HeaderView: View {
     @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var auth: AuthStore
+    @State private var showAccount = false
 
     var body: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(Copy.t("headerTitle", state.language))
-                    .font(.app(18, weight: .black))
-                    .foregroundStyle(Color.navyPrimary)
-                Text(Copy.t("byHaddad", state.language))
-                    .font(.app(12, weight: .bold))
-                    .foregroundStyle(Color.navyMedium)
-                    .lineLimit(1)
-                Text(Copy.t("subtitle", state.language))
-                    .font(.app(10, weight: .bold))
-                    .foregroundStyle(Color.blueAccent)
-                    .lineLimit(1)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Copy.t("headerTitle", state.language))
+                        .font(.app(18, weight: .black)).foregroundStyle(Color.navyPrimary)
+                    Text(Copy.t("byHaddad", state.language))
+                        .font(.app(12, weight: .bold)).foregroundStyle(Color.slateTextLight)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if let session = auth.session {
+                    AccountHeaderButton(email: session.email, name: auth.name) { showAccount = true }
+                }
+                TutorialHelpButton {
+                    state.tutorialTopic = state.selectedTab == .payroll && state.payrollReverseMode
+                        ? .reversePayroll : TutorialTopic.forService(state.selectedTab)
+                }
             }
-            Spacer()
-            LanguageSegmentedControl(selected: state.language.rawValue) { key in
-                state.language = key == "AR" ? .arabic : .english
+            HStack(spacing: 12) {
+                Text(Copy.t("subtitle", state.language))
+                    .font(.app(10, weight: .medium)).foregroundStyle(Color.slateTextLight)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                LanguageSegmentedControl(selected: state.language.rawValue) { key in
+                    state.language = key == "AR" ? .arabic : .english
+                }
             }
         }
+        .accessibilityIdentifier("calculator_header")
+        .fullScreenCover(isPresented: $showAccount) {
+            ProfileScreen()
+                .environmentObject(state)
+                .environmentObject(auth)
+        }
+        #if DEBUG
+        .onAppear { if ProcessInfo.processInfo.arguments.contains("-uiProfile") { showAccount = true } }
+        #endif
     }
 }
 
@@ -445,8 +406,7 @@ struct ActiveServiceBanner: View {
     var body: some View {
         let meta = serviceMeta(state.selectedTab, language: state.language)
         HStack(spacing: 12) {
-            Image(systemName: meta.icon)
-                .font(.app(17, weight: .bold))
+            ServiceIcon(tab: state.selectedTab, systemName: meta.icon, size: 17)
                 .foregroundStyle(Color.white)
                 .frame(width: 36, height: 36)
                 .background(meta.color)
@@ -461,7 +421,7 @@ struct ActiveServiceBanner: View {
             }
             Spacer()
             Button(Copy.t("changeService", state.language)) {
-                state.onboardingStep = 3
+                state.onboardingStep = 4
             }
             .font(.app(12, weight: .black))
             .foregroundStyle(Color.blueAccent)
@@ -479,6 +439,7 @@ struct ActiveServiceBanner: View {
 struct PayrollCalculatorTab: View {
     @EnvironmentObject private var state: AppState
     @State private var isCalculated = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 16) {
@@ -488,6 +449,15 @@ struct PayrollCalculatorTab: View {
                 bodyText: Copy.t("payrollIntroBody", state.language)
             )
 
+            PayrollCalculationModeSelector(reverse: state.payrollReverseMode, language: state.language) { reverse in
+                guard reverse != state.payrollReverseMode else { return }
+                withAnimation(reduceMotion ? nil : TaxPulseMotion.curve(duration: 0.18)) {
+                    if reverse { state.salaryPeriod = .monthly }
+                    state.payrollReverseMode = reverse
+                    isCalculated = false
+                }
+            }
+
             AppCard {
                 HStack {
                     Text(Copy.t("payroll", state.language))
@@ -496,16 +466,21 @@ struct PayrollCalculatorTab: View {
                     Spacer()
                     PillButton(title: Copy.t("reset", state.language), systemImage: "arrow.clockwise") {
                         isCalculated = false
+                        state.payrollReverseMode = false
                         state.resetPayroll()
                     }
                 }
 
-                Text(Copy.t("salaryPeriod", state.language))
-                    .font(.app(11, weight: .bold))
-                    .foregroundStyle(Color.slateTextLight)
-                HorizontalToggleRow(options: [("MONTHLY", Copy.t("monthly", state.language)), ("ANNUAL", Copy.t("annual", state.language))], selected: state.salaryPeriod.rawValue) {
-                    state.salaryPeriod = $0 == "ANNUAL" ? .annual : .monthly
-                    isCalculated = false
+                if !state.payrollReverseMode {
+                    Text(Copy.t("salaryPeriod", state.language))
+                        .font(.app(11, weight: .bold))
+                        .foregroundStyle(Color.slateTextLight)
+                    HorizontalToggleRow(options: [("MONTHLY", Copy.t("monthly", state.language)), ("ANNUAL", Copy.t("annual", state.language))], selected: state.salaryPeriod.rawValue) {
+                        state.payrollReverseMode = false
+                        state.salaryPeriod = $0 == "ANNUAL" ? .annual : .monthly
+                        isCalculated = false
+                    }
+                    .accessibilityIdentifier("payroll_salary_period")
                 }
 
                 Text(Copy.t("currency", state.language))
@@ -515,7 +490,11 @@ struct PayrollCalculatorTab: View {
                     state.payrollCurrency = $0 == "USD" ? .usd : .lbp
                     isCalculated = false
                 }
+                .accessibilityIdentifier("payroll_currency")
 
+                if state.payrollReverseMode {
+                    ReversePayrollFields()
+                } else {
                 if state.payrollCurrency == .lbp {
                     StyledTextField(title: state.salaryPeriod == .annual ? Copy.t("annualSalaryLbp", state.language) : Copy.t("basicSalaryLbp", state.language), placeholder: state.salaryPeriod == .annual ? Copy.t("enterAnnualSalary", state.language) : Copy.t("enterMonthlySalary", state.language), suffix: state.language == .arabic ? "ل.ل" : "LBP", text: Binding(get: { state.payrollGrossLbp }, set: { state.payrollGrossLbp = sanitizedDigits($0); isCalculated = false }), leadingSystemImage: "creditcard.fill", textAlignment: state.language == .arabic ? .right : .left)
                     CurrentValueLine(
@@ -547,6 +526,8 @@ struct PayrollCalculatorTab: View {
                             .foregroundStyle(state.payrollBasicSalaryLbpValue > 0 ? Color.successGreen : Color.slateTextLight)
                     }
                 }
+
+                } // Regular gross salary inputs
 
                 MaritalStatusSelector(language: state.language, selected: state.payrollMarital.rawValue) {
                     state.payrollMarital = MaritalStatus(rawValue: $0) ?? .single
@@ -585,7 +566,10 @@ struct PayrollCalculatorTab: View {
             // Android blocks the CTA until the salary — and, in USD mode, the exchange
             // rate — are both present, so the results can never be built from an
             // implied rate.
-            if !isPayrollInputIncomplete && !isCalculated {
+            if state.payrollReverseMode {
+                ReversePayrollOutcome().id(reverseSignature)
+            }
+            if !state.payrollReverseMode && !isPayrollInputIncomplete && !isCalculated {
                 AnimatedCalculateButton(title: Copy.t("payrollCalculateShort", state.language)) {
                     isCalculated = true
                 }
@@ -598,10 +582,22 @@ struct PayrollCalculatorTab: View {
                 )
             }
 
-            if isCalculated || state.debugPreCalculated {
+            if !state.payrollReverseMode && (isCalculated || state.debugPreCalculated) {
                 PayrollResultCard(result: state.payrollResult)
             }
         }
+        .onChange(of: state.payrollReverseMode) { _, reverse in
+            if reverse {
+                isCalculated = false
+            }
+        }
+    }
+
+    private var reverseSignature: String {
+        [state.reverseNetTarget, state.reverseWorkingDays, state.reverseDailyTransport, String(state.reverseIncludeFamily),
+         state.payrollCurrency.rawValue, state.payrollExchangeRate, state.payrollMarital.rawValue,
+         String(state.payrollChildren), String(state.payrollMonth), String(state.isNssfRegistered),
+         String(state.useFamilyRebates)].joined(separator: "|")
     }
 
     /// Mirrors Android's `isInputIncomplete` gate for the payroll CTA.
@@ -619,19 +615,30 @@ struct PayrollCalculatorTab: View {
 struct PayrollResultCard: View {
     @EnvironmentObject private var state: AppState
     var result: PayrollItem
+    var reverseCalculation = false
 
     var body: some View {
         AppCard {
-            Text(Copy.t("complianceSummary", state.language))
+            Text(reverseCalculation ? ReversePayrollCopy.t("normalTitle", state.language)
+                : Copy.t("complianceSummary", state.language))
                 .font(.app(15, weight: .black))
                 .foregroundStyle(Color.navyPrimary)
 
+            if reverseCalculation {
+                Text(ReversePayrollCopy.t("normalHint", state.language))
+                    .font(.app(11)).foregroundStyle(Color.slateTextLight)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("reverse_normal_explanation")
+            }
+
             VStack(spacing: 8) {
-                Text(state.salaryPeriod == .annual ? (state.language == .arabic ? "صافي الراتب السنوي للقبض" : "ANNUAL NET TO BE CASHED") : Copy.t("netWithFamily", state.language).uppercased())
+                Text(reverseCalculation ? ReversePayrollCopy.t("salaryNet", state.language)
+                    : state.salaryPeriod == .annual ? (state.language == .arabic ? "صافي الراتب السنوي للقبض" : "ANNUAL NET TO BE CASHED") : Copy.t("netWithFamily", state.language).uppercased())
                     .font(.app(12, weight: .black))
                     .foregroundStyle(Color.navyPrimary)
                     .multilineTextAlignment(.center)
                 Text(money(result: result.netSalary, language: state.language))
+                    .accessibilityIdentifier("payroll_net_amount")
                     .font(.app(26, weight: .black))
                     .foregroundStyle(Color.successGreen)
                     .lineLimit(1)
@@ -1414,10 +1421,13 @@ struct PenaltyResultCard: View {
 
 struct ExtensionsCalculatorTab: View {
     @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var remoteConfig: RemoteConfigStore
 
     var body: some View {
         VStack(spacing: 16) {
             SectionIntro(title: Copy.t("extensionsIntroTitle", state.language), bodyText: Copy.t("extensionsIntroBody", state.language))
+                // Opening this tab always pulls the latest extended due date from Firebase.
+                .onAppear { remoteConfig.fetch(force: true) }
 
             AppCard {
                 Text(Copy.t("selectExtensionTaxType", state.language))
@@ -1493,10 +1503,9 @@ struct ExtensionsCalculatorTab: View {
                 .background(Color.slateLight)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.slateBorder, lineWidth: 1))
+                // Read-only: the official date is published in Firebase Remote Config.
                 DateFields(title: Copy.t("officialExtendedDate", state.language), day: $state.extensionDay, month: $state.extensionMonth, year: $state.extensionYearValue)
-                PrimaryActionButton(title: Copy.t("saveExtension", state.language), systemImage: "checkmark.circle.fill", color: .navyPrimary, cornerRadius: 12, iconOnLeading: true) {
-                    state.handleSaveExtensionTap()
-                }
+                    .allowsHitTesting(false)
             }
 
             AppCard {
@@ -2155,9 +2164,9 @@ struct LanguageCard: View {
             VStack(spacing: 0) {
                 Text(code)
                     .font(.app(16, weight: .black))
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(selected ? Color.navyDark : Color.white)
                     .frame(width: 48, height: 48)
-                    .background(selected ? Color(hex: 0x2563EB) : Color.white.opacity(0.10))
+                    .background(selected ? Color.languageBlue : Color.white.opacity(0.10))
                     .clipShape(Circle())
                 Spacer().frame(height: 16)
                 Text(title)
@@ -2176,11 +2185,11 @@ struct LanguageCard: View {
             }
             .padding(20)
             .frame(maxWidth: .infinity)
-            .background(selected ? Color(hex: 0x1D4ED8).opacity(0.25) : Color.white.opacity(0.05))
+            .background(selected ? Color.languageBlue.opacity(0.16) : Color.white.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(selected ? Color(hex: 0x3B82F6) : Color.white.opacity(0.15), lineWidth: selected ? 2 : 1)
+                    .stroke(selected ? Color.languageBlue : Color.white.opacity(0.15), lineWidth: selected ? 2 : 1)
             )
         }
         .buttonStyle(.plain)
@@ -2194,44 +2203,48 @@ struct LanguageCard: View {
 struct ServiceSelectionCard: View {
     @EnvironmentObject private var state: AppState
     var tab: ServiceTab
+    var compact = false
     var action: () -> Void
+    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 15
+    @ScaledMetric(relativeTo: .headline) private var compactTitleSize: CGFloat = 14
+    @ScaledMetric(relativeTo: .caption) private var descriptionSize: CGFloat = 11
 
     var body: some View {
         let meta = serviceMeta(tab, language: state.language)
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 0) {
-                Image(systemName: meta.icon)
-                    .font(.app(20, weight: .bold))
-                    .foregroundStyle(Color.white)
-                    .frame(width: 40, height: 40)
-                    .background(
-                        LinearGradient(
-                            colors: meta.gradient,
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                Spacer().frame(height: 14)
-                Text(meta.title)
-                    .font(.app(15, weight: .bold))
-                    .foregroundStyle(Color.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                Spacer().frame(height: 4)
-                Text(meta.description)
-                    .font(.app(11))
-                    .foregroundStyle(Color(hex: 0x94A3B8))
-                    .lineLimit(3)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
+            Group {
+                if compact {
+                    HStack(spacing: 10) {
+                        serviceIcon(meta, compact: true)
+                        Text(meta.title)
+                            .font(.app(compactTitleSize, weight: .bold))
+                            .foregroundStyle(Color.white)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                } else {
+                    VStack(alignment: .leading, spacing: 0) {
+                        serviceIcon(meta, compact: false)
+                        Spacer().frame(height: 14)
+                        Text(meta.title)
+                            .font(.app(titleSize, weight: .bold))
+                            .foregroundStyle(Color.white)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer().frame(height: 4)
+                        Text(meta.description)
+                            .font(.app(descriptionSize))
+                            .foregroundStyle(Color(hex: 0x94A3B8))
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(16)
+                }
             }
-            .padding(16)
-            // Fixed height keeps all four cards uniform without letting the grid
-            // stretch to fill the screen (Android sizes them to content).
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .frame(height: 152)
+            .frame(maxWidth: .infinity, minHeight: compact ? 48 : 138, alignment: .leading)
             .background(Color.white.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay(
@@ -2240,9 +2253,19 @@ struct ServiceSelectionCard: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("service_choice_\(tab.rawValue)")
         // Card content stays left-aligned and readable in Arabic even though the
         // grid itself is pinned LTR.
         .environment(\.layoutDirection, state.language == .arabic ? .rightToLeft : .leftToRight)
+    }
+
+    private func serviceIcon(_ meta: (title: String, description: String, icon: String, color: Color, gradient: [Color]), compact: Bool) -> some View {
+        ServiceIcon(tab: tab, systemName: meta.icon, size: compact ? 18 : 20)
+            .foregroundStyle(Color.white)
+            .frame(width: compact ? 32 : 40, height: compact ? 32 : 40)
+            .background(LinearGradient(colors: meta.gradient, startPoint: .topLeading, endPoint: .bottomTrailing))
+            .clipShape(RoundedRectangle(cornerRadius: compact ? 10 : 12, style: .continuous))
+            .accessibilityHidden(true)
     }
 }
 
@@ -2264,6 +2287,7 @@ struct TopBackButton: View {
             .padding(.top, 16)
             Spacer()
         }
+        .environment(\.layoutDirection, .leftToRight)
     }
 }
 
@@ -2290,5 +2314,10 @@ func serviceMeta(_ tab: ServiceTab, language: AppLanguage) -> (title: String, de
                 language == .arabic ? "استعلام مهل تقديم التصاريح الممددة من المالية" : "Postponed legal filing deadlines and extensions",
                 "calendar.badge.clock", Color(hex: 0xEC4899),
                 [Color(hex: 0xEC4899), Color(hex: 0xBE185D)])
+    case .property:
+        return (PropertyTaxCopy.t("title", language),
+                language == .arabic ? "الإيرادات السنوية والتنزيل الضريبي والشطور التصاعدية" : "Annual revenue, tax deduction, and progressive brackets",
+                "building.2.fill", Color(hex: 0x0284C7),
+                [Color(hex: 0x0284C7), Color(hex: 0x075985)])
     }
 }

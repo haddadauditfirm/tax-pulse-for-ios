@@ -31,6 +31,7 @@ extension Color {
     static let navyPrimary = Color(red: 0.059, green: 0.173, blue: 0.349)
     static let navyMedium = Color(red: 0.118, green: 0.227, blue: 0.541)
     static let blueAccent = Color(red: 0.008, green: 0.518, blue: 0.780)
+    static let languageBlue = Color(hex: 0x60A5FA)
     static let slateLight = Color(red: 0.945, green: 0.961, blue: 0.976)
     static let slateBorder = Color(red: 0.886, green: 0.910, blue: 0.941)
     static let slateTextDark = Color(red: 0.059, green: 0.090, blue: 0.165)

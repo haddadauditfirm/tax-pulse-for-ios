@@ -148,34 +148,50 @@ struct InfoNoteBox: View {
     }
 }
 
-/// A small vector calculator glyph — rounded body, a screen bar, and a 3x2 key
-/// grid — since "calculator" is not an actual SF Symbol on this SDK and the closest
-/// real symbols (math operators) don't read as a calculator the way Android's does.
+/// The same outlined calculator as Android, with a transparent background.
 struct CalculatorIcon: View {
     var color: Color = .white
 
     var body: some View {
+        Image("PayrollCalculator")
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .foregroundStyle(color)
+            .accessibilityHidden(true)
+    }
+}
+
+/// Option 1: a transparent outline with the same six-key geometry on Android.
+private struct CalculateButtonIcon: View {
+    var body: some View {
         Canvas { context, size in
-            let w = size.width
-            let h = size.height
-            let body = RoundedRectangle(cornerRadius: w * 0.2, style: .continuous)
-                .path(in: CGRect(x: 0, y: 0, width: w, height: h))
-            context.stroke(body, with: .color(color), style: StrokeStyle(lineWidth: w * 0.09, lineCap: .round, lineJoin: .round))
-
-            let screen = RoundedRectangle(cornerRadius: w * 0.05, style: .continuous)
-                .path(in: CGRect(x: w * 0.18, y: h * 0.14, width: w * 0.64, height: h * 0.22))
-            context.stroke(screen, with: .color(color), style: StrokeStyle(lineWidth: w * 0.07, lineCap: .round, lineJoin: .round))
-
-            let dotSize = w * 0.12
-            let columns: [CGFloat] = [w * 0.28, w * 0.5, w * 0.72]
-            let rows: [CGFloat] = [h * 0.58, h * 0.79]
-            for y in rows {
-                for x in columns {
-                    let dot = Circle().path(in: CGRect(x: x - dotSize / 2, y: y - dotSize / 2, width: dotSize, height: dotSize))
-                    context.fill(dot, with: .color(color))
+            let unit = min(size.width, size.height) / 24
+            let left = (size.width - 24 * unit) / 2
+            let top = (size.height - 24 * unit) / 2
+            let outline = Path(roundedRect: CGRect(
+                x: left + 3 * unit, y: top + 1.75 * unit,
+                width: 18 * unit, height: 20.5 * unit
+            ), cornerRadius: 3.25 * unit)
+            context.stroke(outline, with: .color(.white), lineWidth: 1.7 * unit)
+            let display = Path(roundedRect: CGRect(
+                x: left + 6 * unit, y: top + 5 * unit,
+                width: 12 * unit, height: 4 * unit
+            ), cornerRadius: 0.8 * unit)
+            context.stroke(display, with: .color(.white), lineWidth: 1.5 * unit)
+            for row in 0..<2 {
+                for column in 0..<3 {
+                    let centerX = left + (7 + CGFloat(column) * 5) * unit
+                    let centerY = top + (13 + CGFloat(row) * 5) * unit
+                    let radius = 1.25 * unit
+                    context.fill(Path(ellipseIn: CGRect(
+                        x: centerX - radius, y: centerY - radius,
+                        width: 2 * radius, height: 2 * radius
+                    )), with: .color(.white))
                 }
             }
         }
+        .accessibilityHidden(true)
     }
 }
 
@@ -190,7 +206,7 @@ struct AnimatedCalculateButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                CalculatorIcon()
+                CalculateButtonIcon()
                     .frame(width: 20, height: 20)
                 Text(title)
                     .font(.app(15, weight: .bold))
@@ -322,8 +338,10 @@ struct OptionChip: View {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(isSelected ? Color.navyPrimary : Color.clear, lineWidth: 1)
             )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -366,8 +384,10 @@ struct HorizontalToggleRow: View {
                         .padding(.horizontal, 6)
                         .background(isSelected ? Color.navyPrimary : Color.clear)
                         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
         .padding(4)
@@ -384,17 +404,21 @@ struct LanguageSegmentedControl: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            LanguageGlobe(size: 18)
+                .foregroundStyle(Color.blueAccent).padding(.horizontal, 6)
             ForEach(options, id: \.0) { key, title in
                 let isSelected = selected == key
                 Button {
                     onSelect(key)
                 } label: {
                     Text(title)
-                        .font(.app(14, weight: .black))
-                        .foregroundStyle(isSelected ? Color.white : Color.navyPrimary)
-                        .frame(width: 70, height: 42)
+                        .font(.app(11, weight: .bold))
+                        .foregroundStyle(isSelected ? Color.white : Color.slateTextLight)
+                        .frame(minWidth: 48, minHeight: 42)
+                        .padding(.horizontal, 6)
                         .background(isSelected ? Color.blueAccent : Color.clear)
                         .clipShape(Capsule())
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(key == "EN" ? "English" : "Arabic")
@@ -433,8 +457,10 @@ struct CompactOptionButton: View {
             .padding(.vertical, 8)
             .background(isSelected ? Color.navyPrimary : Color.slateLight)
             .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -496,8 +522,10 @@ struct SelectableCardGrid: View {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(isSelected ? selectedFill : Color.slateBorder, lineWidth: 1)
                     )
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
     }
@@ -516,9 +544,11 @@ struct NumberCircle: View {
                 .frame(width: 44, height: 44)
                 .background(isSelected ? Color.navyPrimary : Color.slateLight)
                 .clipShape(Circle())
+                .contentShape(Rectangle())
         }
         .frame(maxWidth: .infinity)
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -579,7 +609,9 @@ struct NumericTextField: UIViewRepresentable {
         field.keyboardType = decimal ? .decimalPad : .numberPad
         field.font = font
         field.textColor = textColor
-        field.placeholder = placeholder
+        configurePlaceholder(field)
+        field.tintColor = UIColor(Color.blueAccent)
+        field.overrideUserInterfaceStyle = .light
         field.borderStyle = .none
         field.backgroundColor = .clear
         field.adjustsFontSizeToFitWidth = true
@@ -595,7 +627,7 @@ struct NumericTextField: UIViewRepresentable {
 
     func updateUIView(_ field: UITextField, context: Context) {
         context.coordinator.parent = self
-        field.placeholder = placeholder
+        configurePlaceholder(field)
         field.keyboardType = decimal ? .decimalPad : .numberPad
         field.font = font
         field.textColor = textColor
@@ -607,6 +639,13 @@ struct NumericTextField: UIViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    private func configurePlaceholder(_ field: UITextField) {
+        field.attributedPlaceholder = NSAttributedString(string: placeholder, attributes: [
+            .foregroundColor: UIColor(Color.slateTextLight),
+            .font: font
+        ])
+    }
 
     final class Coordinator: NSObject, UITextFieldDelegate {
         var parent: NumericTextField
@@ -730,6 +769,7 @@ struct YearPickerField: View {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .stroke(Color.slateBorder, lineWidth: 1)
                 )
+                .contentShape(Rectangle())
             }
             // Digits read left-to-right even in Arabic.
             .environment(\.layoutDirection, .leftToRight)
@@ -857,6 +897,7 @@ struct AndroidToggleCard: View {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(isOn ? Color.navyPrimary.opacity(0.3) : Color.slateBorder, lineWidth: 1)
             )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -1010,6 +1051,7 @@ private struct MaritalStatusRow: View {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(isSelected ? Color.navyPrimary : Color.clear, lineWidth: 1.5)
             )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.2), value: isSelected)
@@ -1155,5 +1197,225 @@ struct AppModalHost: View {
                 secondaryAction: { state.activeModal = nil }
             )
         }
+    }
+}
+
+
+struct LanguageGlobe: View {
+    var size: CGFloat = 18
+    var tint: Color = .blueAccent
+
+    var body: some View {
+        Image("LanguageGlobe")
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .foregroundStyle(tint)
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
+    }
+}
+
+/// Native paths shared with Android for every service and the active-service banner.
+struct ServiceIcon: View {
+    let tab: ServiceTab
+    let systemName: String
+    let size: CGFloat
+    var body: some View {
+        MaterialServiceShape(tab: tab).fill(ForegroundStyle())
+            .frame(width: size, height: size).accessibilityHidden(true)
+    }
+}
+
+/// Exact Android Material service paths (AOSP, Apache-2.0; see MATERIAL-ICONS-LICENSE.txt).
+private struct MaterialServiceShape: Shape {
+    let tab: ServiceTab
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        switch tab {
+        case .payroll:
+            path.move(to: CGPoint(x: 19, y: 14))
+            path.addLine(to: CGPoint(x: 19, y: 6))
+            path.addCurve(to: CGPoint(x: 17, y: 4), control1: CGPoint(x: 19, y: 4.9), control2: CGPoint(x: 18.1, y: 4))
+            path.addLine(to: CGPoint(x: 3, y: 4))
+            path.addCurve(to: CGPoint(x: 1, y: 6), control1: CGPoint(x: 1.9, y: 4), control2: CGPoint(x: 1, y: 4.9))
+            path.addLine(to: CGPoint(x: 1, y: 14))
+            path.addCurve(to: CGPoint(x: 3, y: 16), control1: CGPoint(x: 1, y: 15.1), control2: CGPoint(x: 1.9, y: 16))
+            path.addLine(to: CGPoint(x: 17, y: 16))
+            path.addCurve(to: CGPoint(x: 19, y: 14), control1: CGPoint(x: 18.1, y: 16), control2: CGPoint(x: 19, y: 15.1))
+            path.closeSubpath()
+            path.move(to: CGPoint(x: 10, y: 13))
+            path.addCurve(to: CGPoint(x: 7, y: 10), control1: CGPoint(x: 8.34, y: 13), control2: CGPoint(x: 7, y: 11.66))
+            path.addCurve(to: CGPoint(x: 10, y: 7), control1: CGPoint(x: 7, y: 8.34), control2: CGPoint(x: 8.34, y: 7))
+            path.addCurve(to: CGPoint(x: 13, y: 10), control1: CGPoint(x: 11.66, y: 7), control2: CGPoint(x: 13, y: 8.34))
+            path.addCurve(to: CGPoint(x: 10, y: 13), control1: CGPoint(x: 13, y: 11.66), control2: CGPoint(x: 11.66, y: 13))
+            path.closeSubpath()
+            path.move(to: CGPoint(x: 23, y: 7))
+            path.addLine(to: CGPoint(x: 23, y: 18))
+            path.addCurve(to: CGPoint(x: 21, y: 20), control1: CGPoint(x: 23, y: 19.1), control2: CGPoint(x: 22.1, y: 20))
+            path.addLine(to: CGPoint(x: 4, y: 20))
+            path.addLine(to: CGPoint(x: 4, y: 18))
+            path.addLine(to: CGPoint(x: 21, y: 18))
+            path.addLine(to: CGPoint(x: 21, y: 7))
+            path.addLine(to: CGPoint(x: 23, y: 7))
+            path.closeSubpath()
+        case .profit:
+            path.move(to: CGPoint(x: 4, y: 10))
+            path.addLine(to: CGPoint(x: 7, y: 10))
+            path.addLine(to: CGPoint(x: 7, y: 17))
+            path.addLine(to: CGPoint(x: 4, y: 17))
+            path.closeSubpath()
+            path.move(to: CGPoint(x: 10.5, y: 10))
+            path.addLine(to: CGPoint(x: 13.5, y: 10))
+            path.addLine(to: CGPoint(x: 13.5, y: 17))
+            path.addLine(to: CGPoint(x: 10.5, y: 17))
+            path.closeSubpath()
+            path.move(to: CGPoint(x: 2, y: 19))
+            path.addLine(to: CGPoint(x: 22, y: 19))
+            path.addLine(to: CGPoint(x: 22, y: 22))
+            path.addLine(to: CGPoint(x: 2, y: 22))
+            path.closeSubpath()
+            path.move(to: CGPoint(x: 17, y: 10))
+            path.addLine(to: CGPoint(x: 20, y: 10))
+            path.addLine(to: CGPoint(x: 20, y: 17))
+            path.addLine(to: CGPoint(x: 17, y: 17))
+            path.closeSubpath()
+            path.move(to: CGPoint(x: 12, y: 1))
+            path.addLine(to: CGPoint(x: 2, y: 6))
+            path.addLine(to: CGPoint(x: 2, y: 8))
+            path.addLine(to: CGPoint(x: 22, y: 8))
+            path.addLine(to: CGPoint(x: 22, y: 6))
+            path.closeSubpath()
+        case .penalties:
+            path.move(to: CGPoint(x: 1, y: 21))
+            path.addLine(to: CGPoint(x: 23, y: 21))
+            path.addLine(to: CGPoint(x: 12, y: 2))
+            path.addLine(to: CGPoint(x: 1, y: 21))
+            path.closeSubpath()
+            path.move(to: CGPoint(x: 13, y: 18))
+            path.addLine(to: CGPoint(x: 11, y: 18))
+            path.addLine(to: CGPoint(x: 11, y: 16))
+            path.addLine(to: CGPoint(x: 13, y: 16))
+            path.addLine(to: CGPoint(x: 13, y: 18))
+            path.closeSubpath()
+            path.move(to: CGPoint(x: 13, y: 14))
+            path.addLine(to: CGPoint(x: 11, y: 14))
+            path.addLine(to: CGPoint(x: 11, y: 10))
+            path.addLine(to: CGPoint(x: 13, y: 10))
+            path.addLine(to: CGPoint(x: 13, y: 14))
+            path.closeSubpath()
+        case .extensions:
+            path.move(to: CGPoint(x: 9, y: 11))
+            path.addLine(to: CGPoint(x: 7, y: 11))
+            path.addLine(to: CGPoint(x: 7, y: 13))
+            path.addLine(to: CGPoint(x: 9, y: 13))
+            path.addLine(to: CGPoint(x: 9, y: 11))
+            path.closeSubpath()
+            path.move(to: CGPoint(x: 13, y: 11))
+            path.addLine(to: CGPoint(x: 11, y: 11))
+            path.addLine(to: CGPoint(x: 11, y: 13))
+            path.addLine(to: CGPoint(x: 13, y: 13))
+            path.addLine(to: CGPoint(x: 13, y: 11))
+            path.closeSubpath()
+            path.move(to: CGPoint(x: 17, y: 11))
+            path.addLine(to: CGPoint(x: 15, y: 11))
+            path.addLine(to: CGPoint(x: 15, y: 13))
+            path.addLine(to: CGPoint(x: 17, y: 13))
+            path.addLine(to: CGPoint(x: 17, y: 11))
+            path.closeSubpath()
+            path.move(to: CGPoint(x: 19, y: 4))
+            path.addLine(to: CGPoint(x: 18, y: 4))
+            path.addLine(to: CGPoint(x: 18, y: 2))
+            path.addLine(to: CGPoint(x: 16, y: 2))
+            path.addLine(to: CGPoint(x: 16, y: 4))
+            path.addLine(to: CGPoint(x: 8, y: 4))
+            path.addLine(to: CGPoint(x: 8, y: 2))
+            path.addLine(to: CGPoint(x: 6, y: 2))
+            path.addLine(to: CGPoint(x: 6, y: 4))
+            path.addLine(to: CGPoint(x: 5, y: 4))
+            path.addCurve(to: CGPoint(x: 3.01, y: 6), control1: CGPoint(x: 3.89, y: 4), control2: CGPoint(x: 3.01, y: 4.9))
+            path.addLine(to: CGPoint(x: 3, y: 20))
+            path.addCurve(to: CGPoint(x: 5, y: 22), control1: CGPoint(x: 3, y: 21.1), control2: CGPoint(x: 3.89, y: 22))
+            path.addLine(to: CGPoint(x: 19, y: 22))
+            path.addCurve(to: CGPoint(x: 21, y: 20), control1: CGPoint(x: 20.1, y: 22), control2: CGPoint(x: 21, y: 21.1))
+            path.addLine(to: CGPoint(x: 21, y: 6))
+            path.addCurve(to: CGPoint(x: 19, y: 4), control1: CGPoint(x: 21, y: 4.9), control2: CGPoint(x: 20.1, y: 4))
+            path.closeSubpath()
+            path.move(to: CGPoint(x: 19, y: 20))
+            path.addLine(to: CGPoint(x: 5, y: 20))
+            path.addLine(to: CGPoint(x: 5, y: 9))
+            path.addLine(to: CGPoint(x: 19, y: 9))
+            path.addLine(to: CGPoint(x: 19, y: 20))
+            path.closeSubpath()
+        case .property:
+            path.move(to: CGPoint(x: 1, y: 11))
+            path.addLine(to: CGPoint(x: 1, y: 21))
+            path.addLine(to: CGPoint(x: 6, y: 21))
+            path.addLine(to: CGPoint(x: 6, y: 15))
+            path.addLine(to: CGPoint(x: 10, y: 15))
+            path.addLine(to: CGPoint(x: 10, y: 21))
+            path.addLine(to: CGPoint(x: 15, y: 21))
+            path.addLine(to: CGPoint(x: 15, y: 11))
+            path.addLine(to: CGPoint(x: 8, y: 6))
+            path.closeSubpath()
+            path.move(to: CGPoint(x: 10, y: 3))
+            path.addLine(to: CGPoint(x: 10, y: 4.97))
+            path.addLine(to: CGPoint(x: 17, y: 9.97))
+            path.addLine(to: CGPoint(x: 17, y: 11))
+            path.addLine(to: CGPoint(x: 19, y: 11))
+            path.addLine(to: CGPoint(x: 19, y: 13))
+            path.addLine(to: CGPoint(x: 17, y: 13))
+            path.addLine(to: CGPoint(x: 17, y: 15))
+            path.addLine(to: CGPoint(x: 19, y: 15))
+            path.addLine(to: CGPoint(x: 19, y: 17))
+            path.addLine(to: CGPoint(x: 17, y: 17))
+            path.addLine(to: CGPoint(x: 17, y: 21))
+            path.addLine(to: CGPoint(x: 23, y: 21))
+            path.addLine(to: CGPoint(x: 23, y: 3))
+            path.addLine(to: CGPoint(x: 10, y: 3))
+            path.closeSubpath()
+            path.move(to: CGPoint(x: 19, y: 9))
+            path.addLine(to: CGPoint(x: 17, y: 9))
+            path.addLine(to: CGPoint(x: 17, y: 7))
+            path.addLine(to: CGPoint(x: 19, y: 7))
+            path.addLine(to: CGPoint(x: 19, y: 9))
+            path.closeSubpath()
+        }
+        let scale = min(rect.width, rect.height) / 24
+        return path.applying(CGAffineTransform(a: scale, b: 0, c: 0, d: scale,
+            tx: rect.midX - 12 * scale, ty: rect.midY - 12 * scale))
+    }
+}
+
+struct TutorialBookIcon: View {
+    var tint: Color = .blueAccent
+
+    var body: some View {
+        Image("TutorialBook")
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .foregroundStyle(tint)
+            .accessibilityHidden(true)
+    }
+}
+
+struct TutorialHelpButton: View {
+    @EnvironmentObject private var state: AppState
+    let onOpen: () -> Void
+
+    var body: some View {
+        Button {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            onOpen()
+        } label: {
+            TutorialBookIcon()
+                .frame(width: 30, height: 30)
+                .frame(width: 48, height: 48)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(state.language == .arabic ? "كيفية استخدام التطبيق" : "How to use the app")
+        .accessibilityIdentifier("tutorial_open")
     }
 }

@@ -11,6 +11,7 @@ enum ServiceTab: Int, CaseIterable, Identifiable {
     case profit
     case penalties
     case extensions
+    case property
 
     var id: Int { rawValue }
 }

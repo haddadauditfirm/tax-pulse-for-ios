@@ -3,6 +3,137 @@ import SwiftUI
 import UIKit
 @testable import TaxPulseIOS
 
+final class InputAndIconRenderingTests: XCTestCase {
+    @MainActor
+    func testEmptyNumericFieldKeepsReadableHintsInBothLanguagesAndAppearanceModes() throws {
+        let expectedColor = UIColor(Color.slateTextLight)
+        for hint in ["Enter salary amount", "أدخل مبلغ الراتب"] {
+            for appearance in [UIUserInterfaceStyle.light, .dark] {
+                let host = UIHostingController(rootView: NumericTextField(
+                    text: .constant(""), placeholder: hint, decimal: true
+                ))
+                host.overrideUserInterfaceStyle = appearance
+                host.loadViewIfNeeded()
+                host.view.frame = CGRect(x: 0, y: 0, width: 320, height: 60)
+                host.view.layoutIfNeeded()
+                let field = try XCTUnwrap(findTextField(in: host.view))
+                XCTAssertEqual(field.attributedPlaceholder?.string, hint)
+                let color = try XCTUnwrap(field.attributedPlaceholder?.attribute(
+                    .foregroundColor, at: 0, effectiveRange: nil
+                ) as? UIColor)
+                XCTAssertEqual(color, expectedColor)
+                XCTAssertEqual(field.overrideUserInterfaceStyle, .light)
+                XCTAssertEqual(field.backgroundColor, .clear)
+            }
+        }
+    }
+
+    @MainActor
+    func testAndroidMatchingIconAssetsAreAvailableInTheAppBundle() {
+        for name in ["LanguageGlobe", "PayrollCalculator", "ReversePayrollCalculator", "PropertyTax", "WelcomeBrand"] {
+            XCTAssertNotNil(UIImage(named: name), "Missing image asset: \(name)")
+        }
+    }
+
+    @MainActor
+    private func findTextField(in view: UIView) -> UITextField? {
+        if let field = view as? UITextField { return field }
+        for child in view.subviews {
+            if let field = findTextField(in: child) { return field }
+        }
+        return nil
+    }
+}
+
+final class PropertyTaxEngineTests: XCTestCase {
+    private func decimal(_ value: String) -> Decimal { Decimal(string: value, locale: Locale(identifier: "en_US_POSIX"))! }
+
+    func testPdfTotalsAndMarginalBoundariesForBothYears() throws {
+        let cases = [
+            ("0", "0"), ("1", "0.04"),
+            ("1199999999", "47999999.96"), ("1200000000", "48000000"), ("1200000001", "48000000.06"),
+            ("2399999999", "119999999.94"), ("2400000000", "120000000"), ("2400000001", "120000000.08"),
+            ("3599999999", "215999999.92"), ("3600000000", "216000000"), ("3600000001", "216000000.11"),
+            ("5999999999", "479999999.89"), ("6000000000", "480000000"), ("6000000001", "480000000.14"),
+            ("7000000000", "620000000"), ("10000000000", "1040000000")
+        ]
+        for year in [2025, 2026] {
+            for (income, expected) in cases {
+                let result = try XCTUnwrap(PropertyTaxEngine.calculate(year: year, revenue: decimal(income), deduction: 0))
+                XCTAssertEqual(result.totalTax, decimal(expected))
+                XCTAssertEqual(result.allocations.reduce(Decimal.zero) { $0 + $1.income }, decimal(income))
+            }
+        }
+    }
+
+    func testManualDeductionAppliedOnceAndZeroWhenCovered() throws {
+        for year in [2025, 2026] {
+            let result = try XCTUnwrap(PropertyTaxEngine.calculate(year: year, revenue: 1_560_000_000, deduction: 360_000_000))
+            XCTAssertEqual(result.taxableRevenue, 1_200_000_000)
+            XCTAssertEqual(result.totalTax, 48_000_000)
+            XCTAssertEqual(PropertyTaxEngine.calculate(year: year, revenue: 1_560_000_000, deduction: 0)?.totalTax, 69_600_000)
+            for deduction in [Decimal(500), Decimal(501), decimal("999999999999999999")] {
+                let zero = try XCTUnwrap(PropertyTaxEngine.calculate(year: year, revenue: 500, deduction: deduction))
+                XCTAssertEqual(zero.taxableRevenue, 0)
+                XCTAssertEqual(zero.totalTax, 0)
+            }
+        }
+    }
+
+    func testLocalizedAndInvalidAmounts() {
+        for value in ["1,560,000,000", "١٬٥٦٠٬٠٠٠٬٠٠٠", "۱٬۵۶۰٬۰۰۰٬۰۰۰", " 1 560 000 000 "] {
+            XCTAssertEqual(PropertyTaxEngine.parseAmount(value), 1_560_000_000)
+        }
+        XCTAssertNil(PropertyTaxEngine.parseAmount(""))
+        XCTAssertEqual(PropertyTaxEngine.parseAmount("", blankAsZero: true), 0)
+        for value in ["-1", "abc", "1.5", "1e6", ",", "1,5", "1,,000", "1,000,", "9999999999999999999"] {
+            XCTAssertNil(PropertyTaxEngine.parseAmount(value, blankAsZero: true))
+        }
+        for year in [2024, 2027] { XCTAssertNil(PropertyTaxEngine.calculate(year: year, revenue: 1, deduction: 0)) }
+        XCTAssertNil(PropertyTaxEngine.calculate(year: 2025, revenue: -1, deduction: 0))
+        XCTAssertNil(PropertyTaxEngine.calculate(year: 2025, revenue: 1, deduction: -1))
+        XCTAssertNil(PropertyTaxEngine.calculate(year: 2025, revenue: decimal("1.5"), deduction: 0))
+        XCTAssertNil(PropertyTaxEngine.calculate(year: 2025, revenue: decimal("1000000000000000000"), deduction: 0))
+    }
+
+    func testLargeAmountsRetainExactPrecision() throws {
+        let result = try XCTUnwrap(PropertyTaxEngine.calculate(year: 2026,
+            revenue: decimal("999999999999999999"), deduction: decimal("999999993999999998")))
+        XCTAssertEqual(result.taxableRevenue, 6_000_000_001)
+        XCTAssertEqual(result.totalTax, decimal("480000000.14"))
+    }
+
+    func testUsdConversionBeforeDeductionAndBracketsForBothYears() throws {
+        for year in [2025, 2026] {
+            let result = try XCTUnwrap(PropertyTaxEngine.calculateUsd(year: year, revenue: decimal("15600.25"), deduction: decimal("3600.25"), exchangeRate: 100_000))
+            XCTAssertEqual(result.revenue, 1_560_025_000)
+            XCTAssertEqual(result.deduction, 360_025_000)
+            XCTAssertEqual(result.taxableRevenue, 1_200_000_000)
+            XCTAssertEqual(result.totalTax, 48_000_000)
+            let fractional = try XCTUnwrap(PropertyTaxEngine.calculateUsd(year: year, revenue: decimal("0.01"), deduction: 0, exchangeRate: decimal("89500.5")))
+            XCTAssertEqual(fractional.revenue, decimal("895.005"))
+            XCTAssertEqual(fractional.totalTax, decimal("35.8002"))
+            XCTAssertEqual(PropertyTaxEngine.calculateUsd(year: year, revenue: 1, deduction: 10, exchangeRate: 89_500)?.totalTax, 0)
+        }
+    }
+
+    func testUsdAndRateParsingAndInvalidConversions() {
+        for raw in ["1,560.25", "١٬٥٦٠٫٢٥", "۱٬۵۶۰٫۲۵"] { XCTAssertEqual(PropertyTaxEngine.parseUsdAmount(raw), decimal("1560.25")) }
+        XCTAssertEqual(PropertyTaxEngine.parseExchangeRate("٨٩٬٥٠٠٫٥"), decimal("89500.5"))
+        XCTAssertEqual(PropertyTaxEngine.parseUsdAmount("", blankAsZero: true), 0)
+        for invalid in ["-1", "1,5", "1,00.50", "1.234", "1e6", "abc", "9999999999999999999"] { XCTAssertNil(PropertyTaxEngine.parseUsdAmount(invalid)) }
+        for invalid in ["", "0", "-1", "1,5", "89500.12345", "10000000000"] { XCTAssertNil(PropertyTaxEngine.parseExchangeRate(invalid)) }
+        for invalid in ["0", "-1", "1.23456", "10000000000"] {
+            XCTAssertNil(PropertyTaxEngine.convertToLbp(1, exchangeRate: decimal(invalid)))
+            XCTAssertNil(PropertyTaxEngine.calculateUsd(year: 2025, revenue: 1, deduction: 0, exchangeRate: decimal(invalid)))
+        }
+        XCTAssertNil(PropertyTaxEngine.convertToLbp(decimal("999999999999999999"), exchangeRate: 89_500))
+        XCTAssertNil(PropertyTaxEngine.calculateUsd(year: 2025, revenue: -1, deduction: 0, exchangeRate: 89_500))
+        XCTAssertNil(PropertyTaxEngine.calculateUsd(year: 2025, revenue: 1, deduction: -1, exchangeRate: 89_500))
+        XCTAssertNil(PropertyTaxEngine.calculateUsd(year: 2025, revenue: decimal("1.001"), deduction: 0, exchangeRate: 89_500))
+    }
+}
+
 final class PayrollEngineParityTests: XCTestCase {
     func testAndroidReferenceMonthlyPayrollSample() {
         let result = PayrollEngine.calculate(
@@ -585,5 +716,214 @@ final class PayrollEngineParityTests: XCTestCase {
         XCTAssertEqual(result.verificationFine, 162_500_000, accuracy: 0.001)
         XCTAssertEqual(result.collectionFine, 121_880_000, accuracy: 0.001)
         XCTAssertEqual(result.totalAmount, 934_380_000, accuracy: 0.001)
+    }
+}
+
+final class OnboardingSlideParityTests: XCTestCase {
+    func testPagesShareTheAndroidSlideAndFadeClockInBothDirections() {
+        for width in [CGFloat(320), 768, 1024] {
+            let start = OnboardingSlideFrame(from: 2, to: 3, width: width, elapsed: 0)
+            XCTAssertEqual(start.incomingOffset, width)
+            XCTAssertEqual(start.outgoingOffset, 0)
+            XCTAssertEqual(start.incomingOpacity, 0)
+            XCTAssertEqual(start.outgoingOpacity, 1)
+            let end = OnboardingSlideFrame(from: 2, to: 3, width: width, elapsed: 0.36)
+            XCTAssertEqual(end.incomingOffset, 0)
+            XCTAssertEqual(end.outgoingOffset, -width)
+            XCTAssertEqual(end.incomingOpacity, 1)
+            XCTAssertEqual(end.outgoingOpacity, 0)
+            for elapsed in [0.0, 0.09, 0.18, 0.27, 0.36] {
+                let forward = OnboardingSlideFrame(from: 3, to: 4, width: width, elapsed: elapsed)
+                let backward = OnboardingSlideFrame(from: 4, to: 3, width: width, elapsed: elapsed)
+                XCTAssertEqual(forward.incomingOffset, -backward.incomingOffset, accuracy: 0.0001)
+                XCTAssertEqual(forward.outgoingOffset, -backward.outgoingOffset, accuracy: 0.0001)
+                XCTAssertEqual(forward.incomingOpacity + forward.outgoingOpacity, 1, accuracy: 0.0001)
+                XCTAssertEqual(forward.incomingOffset - forward.outgoingOffset, width, accuracy: 0.0001)
+            }
+        }
+        let midpoint = OnboardingSlideFrame(from: 1, to: 2, width: 400, elapsed: 0.18)
+        XCTAssertEqual(midpoint.incomingOpacity, 0.775561, accuracy: 0.00001)
+        XCTAssertEqual(midpoint.outgoingOffset, -310.2244, accuracy: 0.01)
+    }
+}
+
+final class ReversePayrollParityTests: XCTestCase {
+    func testManualTransportationChangesOnlyTheExemptAddition() throws {
+        let f = forward()
+        let salaryOnly = f(40_000_000)
+        for daily in [0.0, 300_000, 450_000, 600_000, 1_500_000] {
+            for days in [0, 22, 30] {
+                let transport = daily * Double(days)
+                let target = salaryOnly.netSalary + transport
+                let result = try XCTUnwrap(ReversePayrollEngine.calculate(targetLbp: target, workingDays: days,
+                    usd: false, forward: f, dailyTransportationLbp: daily))
+                XCTAssertEqual(result.transportLbp, transport, accuracy: 0.0001)
+                XCTAssertEqual(result.payroll.basicSalary, 40_000_000, accuracy: 0.0001)
+                XCTAssertEqual(result.payroll.taxAmount, salaryOnly.taxAmount, accuracy: 0.0001)
+                XCTAssertEqual(result.payroll.taxableSalary, salaryOnly.taxableSalary, accuracy: 0.0001)
+                XCTAssertEqual(result.payroll.totalNssfEmployee, salaryOnly.totalNssfEmployee, accuracy: 0.0001)
+                XCTAssertEqual(result.payroll.totalNssfEmployer, salaryOnly.totalNssfEmployer, accuracy: 0.0001)
+                XCTAssertEqual(result.matchedNetLbp, target, accuracy: 0.0001)
+            }
+            let usd = try XCTUnwrap(ReversePayrollEngine.calculate(targetLbp: 179_000_000, workingDays: 22,
+                usd: true, forward: f, dailyTransportationLbp: daily))
+            XCTAssertEqual(usd.transportLbp, 22 * daily, accuracy: 0.0001)
+            XCTAssertGreaterThanOrEqual(usd.matchedNetLbp, 179_000_000)
+            XCTAssertLessThan(usd.roundingDifferenceLbp, 895)
+        }
+        XCTAssertEqual(ReversePayrollEngine.dailyTransportation("٦٠٠٬٠٠٠"), 600_000)
+        XCTAssertEqual(ReversePayrollEngine.dailyTransportation("0"), 0)
+        for raw in ["", "-1", "450000.5", "12,34", "NaN", "1e8", "1000000000001"] {
+            XCTAssertNil(ReversePayrollEngine.dailyTransportation(raw))
+        }
+        for daily in [-1.0, 0.5, .nan, .infinity, 1_000_000_000_001] {
+            XCTAssertNil(ReversePayrollEngine.calculate(targetLbp: 179_000_000, workingDays: 22,
+                usd: false, forward: f, dailyTransportationLbp: daily))
+        }
+        XCTAssertNil(ReversePayrollEngine.calculate(targetLbp: 179_000_000, workingDays: 30,
+            usd: false, forward: f, dailyTransportationLbp: 1_000_000_000_000))
+    }
+
+    private func forward(month: Int = 10, marital: MaritalStatus = .single, children: Int = 0,
+                         nssf: Bool = true, rebates: Bool = true) -> (Double) -> PayrollItem {
+        { gross in
+            PayrollEngine.calculate(basicSalary: gross, employmentType: .monthly,
+                maritalStatus: marital, childrenCount: children, month: month,
+                nssfRegistered: nssf, useFamilyRebates: rebates, period: .monthly)
+        }
+    }
+
+    func testTwoThousandDollarReferenceAndLbpHandoff() throws {
+        let f = forward()
+        let result = try XCTUnwrap(ReversePayrollEngine.calculate(targetLbp: 179_000_000, workingDays: 22, usd: true, forward: f))
+        XCTAssertEqual(result.payroll.basicSalary, 179_820_715, accuracy: 0.0001)
+        XCTAssertEqual(result.amountBeforeDeductionsLbp, 189_720_715, accuracy: 0.0001)
+        XCTAssertEqual(result.matchedNetLbp, result.amountBeforeDeductionsLbp - result.payroll.taxAmount - result.payroll.totalNssfEmployee, accuracy: 0.0001)
+        XCTAssertEqual(result.payroll.taxAmount, 7_120_000, accuracy: 0.0001)
+        XCTAssertEqual(result.payroll.totalNssfEmployee, 3_600_000, accuracy: 0.0001)
+        XCTAssertEqual(result.matchedNetLbp, 179_000_715, accuracy: 0.0001)
+        XCTAssertEqual(f(2009.17 * 89_500).netSalary + result.transportLbp, result.matchedNetLbp, accuracy: 0.0001)
+        let lbp = try XCTUnwrap(ReversePayrollEngine.calculate(targetLbp: 179_000_000, workingDays: 22, usd: false, forward: f))
+        XCTAssertEqual(lbp.payroll.basicSalary, 179_820_000, accuracy: 0.0001)
+        XCTAssertEqual(lbp.matchedNetLbp, 179_000_000, accuracy: 0.0001)
+    }
+
+    func testFamilyAllowancesAreOptionalWithoutChangingExistingRebates() throws {
+        let f = forward(marital: .spouseDependent, children: 2)
+        let included = try XCTUnwrap(ReversePayrollEngine.calculate(targetLbp: 179_000_000, workingDays: 26, usd: true,
+            includeFamilyBenefits: true, forward: f))
+        let onTop = try XCTUnwrap(ReversePayrollEngine.calculate(targetLbp: 179_000_000, workingDays: 26, usd: true,
+            includeFamilyBenefits: false, forward: f))
+        XCTAssertEqual(included.payroll.totalFamilyBenefitsAmount, 4_410_000, accuracy: 0.0001)
+        XCTAssertEqual(included.payroll.familyRebatesAmount, onTop.payroll.familyRebatesAmount, accuracy: 0.0001)
+        XCTAssertGreaterThan(onTop.payroll.basicSalary, included.payroll.basicSalary)
+        XCTAssertGreaterThanOrEqual(included.matchedNetLbp, included.targetLbp)
+        XCTAssertGreaterThanOrEqual(onTop.matchedNetLbp, onTop.targetLbp)
+        XCTAssertEqual(onTop.matchedNetLbp + 4_410_000, onTop.payroll.netSalary + onTop.transportLbp, accuracy: 0.0001)
+    }
+
+    func testRoundedTaxBoundariesRemainAboveTargetAndUseTheLowestPayableUnit() throws {
+        for marital in MaritalStatus.allCases {
+            for rebates in [true, false] {
+                for month in [6, 7, 8, 12] {
+                    let f = forward(month: month, marital: marital, children: marital == .single ? 0 : 3, rebates: rebates)
+                    for gross in [28_000_000.0, 67_500_001, 112_500_001, 187_500_001, 337_500_001,
+                                  637_500_001, 1_162_500_001, 999_000_000_000] {
+                        let target = f(gross).netSalary + 9_900_000
+                        for usd in [false, true] {
+                            let result = try XCTUnwrap(ReversePayrollEngine.calculate(targetLbp: target, workingDays: 22, usd: usd, forward: f))
+                            XCTAssertGreaterThanOrEqual(result.matchedNetLbp, target - 0.0001)
+                            let unit = usd ? 895.0 : 1.0
+                            XCTAssertLessThan(f(result.payroll.basicSalary - unit).netSalary + result.transportLbp, target - 0.0001)
+                            if usd {
+                                let raw = String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), result.payroll.basicSalary / 89_500)
+                                let handoff = try XCTUnwrap(Double(raw)) * 89_500
+                                XCTAssertEqual(f(handoff).netSalary + result.transportLbp, result.matchedNetLbp, accuracy: 0.001)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func testTransportIsExcludedFromSalaryTaxAndEveryNssfBase() throws {
+        for marital in [MaritalStatus.single, .spouseDependent] {
+            for registered in [true, false] {
+                let f = forward(marital: marital, children: marital == .single ? 0 : 2, nssf: registered)
+                let salaryOnly = f(40_000_000)
+                for includeFamily in [true, false] {
+                    for days in [0, 22, 26, 30] {
+                        let transport = Double(days) * 450_000
+                        let target = salaryOnly.netSalary + transport - (includeFamily ? 0 : salaryOnly.totalFamilyBenefitsAmount)
+                        let result = try XCTUnwrap(ReversePayrollEngine.calculate(targetLbp: target, workingDays: days,
+                            usd: false, includeFamilyBenefits: includeFamily, forward: f))
+                        XCTAssertEqual(result.payroll.grossSalary, 40_000_000, accuracy: 0.0001)
+                        XCTAssertEqual(result.amountBeforeDeductionsLbp, 40_000_000 + transport, accuracy: 0.0001)
+                        XCTAssertEqual(target, result.amountBeforeDeductionsLbp - result.payroll.taxAmount - result.payroll.totalNssfEmployee + (includeFamily ? result.payroll.totalFamilyBenefitsAmount : 0), accuracy: 0.0001)
+                        XCTAssertEqual(result.payroll.taxableSalary, salaryOnly.taxableSalary, accuracy: 0.0001)
+                        XCTAssertEqual(result.payroll.taxAmount, salaryOnly.taxAmount, accuracy: 0.0001)
+                        XCTAssertEqual(result.payroll.sicknessMaternityBase, salaryOnly.sicknessMaternityBase, accuracy: 0.0001)
+                        XCTAssertEqual(result.payroll.familyAllowanceBase, salaryOnly.familyAllowanceBase, accuracy: 0.0001)
+                        XCTAssertEqual(result.payroll.endOfServiceBase, salaryOnly.endOfServiceBase, accuracy: 0.0001)
+                        XCTAssertEqual(result.payroll.totalNssfEmployee, salaryOnly.totalNssfEmployee, accuracy: 0.0001)
+                        XCTAssertEqual(result.payroll.totalNssfEmployer, salaryOnly.totalNssfEmployer, accuracy: 0.0001)
+                        XCTAssertEqual(result.matchedNetLbp, target, accuracy: 0.0001)
+                    }
+                }
+            }
+        }
+        let reference = try XCTUnwrap(ReversePayrollEngine.calculate(targetLbp: 50_450_000, workingDays: 26,
+            usd: false, forward: forward()))
+        XCTAssertEqual(reference.payroll.taxAmount, 50_000, accuracy: 0.0001)
+        XCTAssertEqual(reference.payroll.totalNssfEmployee, 1_200_000, accuracy: 0.0001)
+        XCTAssertEqual(reference.payroll.totalNssfEmployer, 8_280_000, accuracy: 0.0001)
+        XCTAssertEqual(reference.payroll.netSalary, 38_750_000, accuracy: 0.0001)
+        XCTAssertEqual(reference.transportLbp, 11_700_000, accuracy: 0.0001)
+    }
+
+    @MainActor
+    func testCurrencyTargetsStaySeparateAndResetClearsBoth() {
+        let state = AppState()
+        state.payrollCurrency = .lbp
+        state.reverseNetTarget = "179000000"
+        state.payrollCurrency = .usd
+        XCTAssertEqual(state.reverseNetTarget, "")
+        state.reverseNetTarget = "2000"
+        state.payrollCurrency = .lbp
+        XCTAssertEqual(state.reverseNetTarget, "179000000")
+        state.payrollCurrency = .usd
+        XCTAssertEqual(state.reverseNetTarget, "2000")
+        state.reverseWorkingDays = "26"
+        state.reverseDailyTransport = "600000"
+        state.reverseIncludeFamily = false
+        state.resetPayroll()
+        XCTAssertEqual(state.reverseNetTargetLbp, "")
+        XCTAssertEqual(state.reverseNetTargetUsd, "")
+        XCTAssertEqual(state.reverseWorkingDays, "")
+        XCTAssertEqual(state.reverseDailyTransport, "")
+        XCTAssertTrue(state.reverseIncludeFamily)
+    }
+
+    func testTransportNssfCapsAndValidation() throws {
+        let july = try XCTUnwrap(ReversePayrollEngine.calculate(targetLbp: 179_000_000, workingDays: 22, usd: false, forward: forward(month: 7)))
+        let august = try XCTUnwrap(ReversePayrollEngine.calculate(targetLbp: 179_000_000, workingDays: 22, usd: false, forward: forward(month: 8)))
+        XCTAssertEqual(july.payroll.totalNssfEmployee, 2_700_000, accuracy: 0.0001)
+        XCTAssertEqual(august.payroll.totalNssfEmployee, 3_600_000, accuracy: 0.0001)
+        let f = forward(marital: .spouseDependent, children: 5, nssf: false)
+        let noNssf = try XCTUnwrap(ReversePayrollEngine.calculate(targetLbp: 179_000_000, workingDays: 26, usd: false, forward: f))
+        XCTAssertEqual(noNssf.payroll.totalNssfEmployee, 0)
+        XCTAssertEqual(noNssf.payroll.totalFamilyBenefitsAmount, 0)
+        XCTAssertEqual(noNssf.transportLbp, 11_700_000)
+        XCTAssertEqual(ReversePayrollEngine.target("٢٬٠٠٠٫٠٠", usd: true), 179_000_000)
+        XCTAssertEqual(ReversePayrollEngine.workingDays("٢٦"), 26)
+        XCTAssertEqual(ReversePayrollEngine.workingDays("٣٠"), 30)
+        for raw in ["", "-1", "NaN", "Infinity", "1e8", "2a000", "12,34", "0", "2000.001"] {
+            XCTAssertNil(ReversePayrollEngine.target(raw, usd: true))
+        }
+        for raw in ["", "-1", "31", "٣١", "32", "22.5", "2a2"] { XCTAssertNil(ReversePayrollEngine.workingDays(raw)) }
+        XCTAssertNil(ReversePayrollEngine.calculate(targetLbp: 179_000_000, workingDays: 31, usd: true, forward: forward()))
+        XCTAssertNil(ReversePayrollEngine.calculate(targetLbp: 9_900_000, workingDays: 22, usd: false, forward: forward()))
+        XCTAssertNil(ReversePayrollEngine.calculate(targetLbp: 1_000_000_000_000, workingDays: 0, usd: false, forward: forward()))
     }
 }
