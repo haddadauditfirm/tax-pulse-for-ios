@@ -657,7 +657,7 @@ struct ProfileScreen: View {
 
                 if confirmSignOut {
                     ProfileConfirmOverlay(modal: TaxPulseModal(
-                        icon: .triangle(Color.blueAccent),
+                        icon: .signOut(Color.blueAccent),
                         title: AuthCopy.t("signOutTitle", language),
                         message: AuthCopy.t("signOutMsg", language),
                         primaryTitle: AuthCopy.t("signOut", language),
