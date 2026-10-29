@@ -47,7 +47,7 @@ Codemagic → **Add application** → GitHub → `haddadauditfirm/tax-pulse-for-
 
 - **Start manually:** in Codemagic open the app → **Start new build** →
   workflow **Tax Pulse iOS — App Store** → choose the branch.
-- **Or push a tag** starting with `v` (e.g. `v1.0.3`) and the build starts on its own.
+- **Or push a tag** starting with `v` (e.g. `v1.1.5`) and the build starts on its own.
   You can create tags from GitHub's website under **Releases**.
 
 The workflow runs the unit tests, builds a signed `.ipa` with the next free
@@ -58,7 +58,7 @@ To send it for review: in App Store Connect fill in screenshots, description,
 privacy details and pricing, pick the uploaded build, then **Submit for Review**.
 (Or set `submit_to_app_store: true` in `codemagic.yaml` once the listing is complete.)
 
-To ship a new version (e.g. 1.0.3), change `MARKETING_VERSION` in
+To ship a new version (e.g. 1.1.5), change `MARKETING_VERSION` in
 `TaxPulseIOS.xcodeproj/project.pbxproj` — or ask Claude to bump it.
 
 ## Common errors

@@ -35,7 +35,7 @@ workflows:
         test_report: build/ios/test/*.xml
       - name: Pick the next build number
         script: |
-          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" || echo 18)
+          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" || echo 24)
           echo "NEXT_BUILD_NUMBER=$((LATEST + 1))" >> $CM_ENV
       - name: Build signed .ipa
         script: |
