@@ -1061,6 +1061,7 @@ private struct MaritalStatusRow: View {
 /// Branded modal icon styles Android uses across its alert dialogs.
 enum ModalIconStyle {
     case triangle(Color)
+    case signOut(Color)
     case success
 }
 
@@ -1105,6 +1106,11 @@ struct TaxPulseModal: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.app(44))
                 .foregroundStyle(color)
+        case .signOut(let color):
+            Image(systemName: "rectangle.portrait.and.arrow.right")
+                .font(.app(44))
+                .foregroundStyle(color)
+                .flipsForRightToLeftLayoutDirection(true)
         case .success:
             ZStack {
                 Circle().fill(Color.successGreen)

@@ -209,7 +209,7 @@ struct LanguageScreen: View {
             // English is always physically LEFT and Arabic always RIGHT, in both
             // locales, so the row is pinned to LTR regardless of the app direction.
             HStack(spacing: 16) {
-                LanguageCard(title: "English", subtitle: "Smarter tax simplified", code: "EN", selected: state.language == .english) {
+                LanguageCard(title: "English", subtitle: "Smarter Tax Simplified For You", code: "EN", selected: state.language == .english) {
                     state.language = .english
                     state.onboardingStep = auth.isSignedIn ? 4 : 3
                 }
@@ -236,7 +236,7 @@ struct ServiceScreen: View {
     @ScaledMetric(relativeTo: .subheadline) private var subtitleSize: CGFloat = 13
 
     private var orderedServices: [ServiceTab] {
-        state.language == .arabic ? [.payroll, .profit, .property, .penalties, .extensions] : ServiceTab.allCases
+        [.payroll, .profit, .property, .penalties, .extensions]
     }
 
     var body: some View {
@@ -246,10 +246,10 @@ struct ServiceScreen: View {
             GeometryReader { geometry in
                 let width = min(max(geometry.size.width - 40, 0), 720)
                 ViewThatFits(in: .vertical) {
-                    serviceContents(style: 0).fixedSize(horizontal: false, vertical: true)
-                    serviceContents(style: 1).fixedSize(horizontal: false, vertical: true)
-                    serviceContents(style: 2).fixedSize(horizontal: false, vertical: true)
-                    ScrollView { serviceContents(style: 2) }
+                    serviceContents(style: 0).padding(.top, 16).fixedSize(horizontal: false, vertical: true)
+                    serviceContents(style: 1).padding(.top, 16).fixedSize(horizontal: false, vertical: true)
+                    serviceContents(style: 2).padding(.top, 16).fixedSize(horizontal: false, vertical: true)
+                    ScrollView { serviceContents(style: 2).padding(.top, 16) }
                 }
                 .frame(width: width, height: max(geometry.size.height - 24, 0), alignment: .top)
                 .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
@@ -1091,7 +1091,7 @@ struct PenaltiesCalculatorTab: View {
                 }
 
                 DateFields(
-                    title: state.language == .arabic ? "تاريخ الاستحقاق القانوني" : "Statutory Due Date",
+                    title: Copy.t("statutoryDueDateEditable", state.language),
                     day: $state.penaltyDueDay,
                     month: $state.penaltyDueMonth,
                     year: Binding(
@@ -1101,7 +1101,7 @@ struct PenaltiesCalculatorTab: View {
                             isCalculated = false
                         }
                     ),
-                    showsTitle: false,
+                    showsTitle: true,
                     onChange: { isCalculated = false }
                 )
                 Button {
@@ -1508,31 +1508,7 @@ struct ExtensionsCalculatorTab: View {
                     .allowsHitTesting(false)
             }
 
-            AppCard {
-                Text(Copy.t("retrieveExtensions", state.language))
-                    .font(.app(14, weight: .bold))
-                    .foregroundStyle(Color.navyPrimary)
-                Text(Copy.t("retrieveExtensionsBody", state.language))
-                    .font(.app(11))
-                    .foregroundStyle(Color.slateTextLight)
-                PrimaryActionButton(title: Copy.t("retrieveNow", state.language), systemImage: "arrow.clockwise", color: .blueAccent, cornerRadius: 12, iconOnLeading: true) {
-                    state.retrieveExtension()
-                }
-                if let message = state.extensionMessage {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(Copy.t("retrievedRecord", state.language))
-                            .font(.app(11, weight: .bold))
-                            .foregroundStyle(Color.slateTextDark)
-                        Text(message)
-                            .font(.app(13, weight: .bold))
-                            .foregroundStyle(message.contains("No registered") || message.contains("لا توجد") ? Color.orange800 : Color.successGreen)
-                    }
-                    .padding(14)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(message.contains("No registered") || message.contains("لا توجد") ? Color.orange50 : Color.successGreenBg)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-            }
+
         }
     }
 
@@ -1578,29 +1554,16 @@ struct ContactCard: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                     .fixedSize(horizontal: false, vertical: true)
-                // Phone / email / URL are LTR tokens; Android pins this whole block
-                // to LTR so they read correctly under Arabic.
                 VStack(alignment: .leading, spacing: 8) {
                     ContactLine(systemImage: "phone.fill", text: "+961 03 177 352")
                     ContactLine(systemImage: "envelope.fill", text: "info@haddadaudit.com")
                     Link(destination: URL(string: "https://www.haddadaudit.com")!) {
-                        HStack(spacing: 10) {
-                            Image(systemName: "globe")
-                                .font(.app(16))
-                                .foregroundStyle(Color.navyMedium)
-                            Text("www.haddadaudit.com")
-                                .font(.app(12, weight: .bold))
-                                .foregroundStyle(Color.navyMedium)
-                        }
-                        // Unlike ContactLine (which centers itself), this Link's HStack
-                        // has no width constraint of its own, so it hugs the leading
-                        // edge inside the outer .leading VStack — visually shifting the
-                        // website row out of alignment with the phone/email rows above.
-                        .frame(maxWidth: .infinity)
+                        ContactLine(systemImage: "", text: "www.haddadaudit.com", website: true)
                     }
                 }
-                .environment(\.layoutDirection, .leftToRight)
+                .fixedSize(horizontal: true, vertical: false)
                 .frame(maxWidth: .infinity)
+                .environment(\.layoutDirection, .leftToRight)
             }
         }
         .padding(.top, 4)
@@ -1610,17 +1573,25 @@ struct ContactCard: View {
 struct ContactLine: View {
     var systemImage: String
     var text: String
+    var website = false
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: systemImage)
-                .foregroundStyle(Color.navyPrimary)
+        HStack(spacing: 10) {
+            Group {
+                if website {
+                    LanguageGlobe(size: 16, tint: .navyMedium)
+                } else {
+                    Image(systemName: systemImage)
+                        .font(.app(16))
+                        .foregroundStyle(Color.navyMedium)
+                }
+            }
+            .frame(width: 20, height: 20)
             Text(text)
-                .foregroundStyle(Color.slateTextDark)
+                .font(.app(12, weight: website ? .bold : .medium))
+                .foregroundStyle(website ? Color.navyMedium : Color.slateTextDark)
         }
-        .font(.app(13, weight: .bold))
-        .frame(maxWidth: .infinity)
-        .multilineTextAlignment(.center)
+        .frame(minHeight: 20)
     }
 }
 
