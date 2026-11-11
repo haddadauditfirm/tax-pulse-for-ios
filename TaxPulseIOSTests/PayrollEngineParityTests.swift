@@ -13,9 +13,15 @@ final class InputAndIconRenderingTests: XCTestCase {
                     text: .constant(""), placeholder: hint, decimal: true
                 ))
                 host.overrideUserInterfaceStyle = appearance
-                host.loadViewIfNeeded()
-                host.view.frame = CGRect(x: 0, y: 0, width: 320, height: 60)
+                // Newer iOS versions only build the UIKit view tree once the
+                // hosting controller is in a window, so attach it to one.
+                let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 60))
+                window.rootViewController = host
+                window.makeKeyAndVisible()
+                host.view.frame = window.bounds
+                host.view.setNeedsLayout()
                 host.view.layoutIfNeeded()
+                defer { window.isHidden = true }
                 let field = try XCTUnwrap(findTextField(in: host.view))
                 XCTAssertEqual(field.attributedPlaceholder?.string, hint)
                 let color = try XCTUnwrap(field.attributedPlaceholder?.attribute(
@@ -581,7 +587,7 @@ final class PayrollEngineParityTests: XCTestCase {
 
     func testMoneyUsesWesternDigitsAndNonBreakingSpaceInBothLanguages() {
         XCTAssertEqual(money(result: 221_370_000, language: .english), "221,370,000\u{00A0}LBP")
-        XCTAssertEqual(money(result: 221_370_000, language: .arabic), "\u{2066}\u{0644}.\u{0644}\u{00A0}221,370,000\u{2069}")
+        XCTAssertEqual(money(result: 221_370_000, language: .arabic), "\u{2066}221,370,000\u{00A0}\u{0644}.\u{0644}\u{2069}")
     }
 
     /// A single LRM is not enough to stop SwiftUI's Text from reordering the sign,
@@ -594,15 +600,15 @@ final class PayrollEngineParityTests: XCTestCase {
         XCTAssertTrue(value.hasSuffix("\u{2069}"), "the isolate must be closed with POP DIRECTIONAL ISOLATE")
         XCTAssertTrue(value.contains("\u{200E}"), "the sign itself still carries an LRM")
         XCTAssertTrue(value.contains("-9,440,000"))
-        // Currency leads in Arabic.
-        XCTAssertTrue(value.hasPrefix("\u{2066}\u{0644}.\u{0644}"), "ل.ل must come first: \(value)")
+        // The number leads and the currency follows, as in "2,600,000,000 ل.ل".
+        XCTAssertTrue(value.hasSuffix("\u{00A0}\u{0644}.\u{0644}\u{2069}"), "ل.ل must come last: \(value)")
     }
 
     func testSignedMoneyKeepsSignAttachedAndLeavesZeroUnsigned() {
         XCTAssertEqual(signedMoney(9_440_000, isDeduction: true, language: .english), "-\u{00A0}9,440,000\u{00A0}LBP")
         XCTAssertEqual(signedMoney(4_410_000, isDeduction: false, language: .english), "+\u{00A0}4,410,000\u{00A0}LBP")
-        XCTAssertEqual(signedMoney(9_440_000, isDeduction: true, language: .arabic), "\u{2066}\u{0644}.\u{0644}\u{00A0}\u{200E}-\u{00A0}9,440,000\u{2069}")
-        XCTAssertEqual(signedMoney(4_410_000, isDeduction: false, language: .arabic), "\u{2066}\u{0644}.\u{0644}\u{00A0}\u{200E}+\u{00A0}4,410,000\u{2069}")
+        XCTAssertEqual(signedMoney(9_440_000, isDeduction: true, language: .arabic), "\u{2066}\u{200E}-\u{00A0}9,440,000\u{00A0}\u{0644}.\u{0644}\u{2069}")
+        XCTAssertEqual(signedMoney(4_410_000, isDeduction: false, language: .arabic), "\u{2066}\u{200E}+\u{00A0}4,410,000\u{00A0}\u{0644}.\u{0644}\u{2069}")
         // Zero is unsigned in both languages, matching formatWithSign.
         XCTAssertEqual(signedMoney(0, isDeduction: true, language: .english), "0\u{00A0}LBP")
         XCTAssertFalse(signedMoney(0, isDeduction: true, language: .arabic).contains("-"))
