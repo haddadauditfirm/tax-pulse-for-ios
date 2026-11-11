@@ -29,7 +29,7 @@ tablet works.
 
 ### 3. Connect the key to Codemagic
 1. Codemagic → **Team settings** → **Team integrations** → **Developer Portal** → **Manage keys** → **Add key**.
-2. Name it exactly **`TaxPulse ASC Key`** (the name used in `codemagic.yaml`),
+2. Name it exactly **`AppStore Connect Key`** (the name used in `codemagic.yaml`),
    paste the Issuer ID and Key ID, upload the `.p8`.
 
 ### 4. Create signing files (Codemagic does it for you)
@@ -66,6 +66,6 @@ To ship a new version (e.g. 1.1.5), change `MARKETING_VERSION` in
 | Message | Fix |
 |---|---|
 | `No matching profiles found` | Repeat step 4; check the bundle ID is `com.haddad.taxpulse`. |
-| `Integration "TaxPulse ASC Key" not found` | The key name in step 3 must match `codemagic.yaml` exactly. |
+| `Integration "AppStore Connect Key" not found` | The key name in step 3 must match `codemagic.yaml` exactly. |
 | `The bundle version must be higher` | Set `APP_STORE_APPLE_ID` correctly so the build number auto-increments. |
 | Missing compliance prompt in TestFlight | Already handled: `ITSAppUsesNonExemptEncryption = NO`. |

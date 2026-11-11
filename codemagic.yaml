@@ -8,7 +8,7 @@ workflows:
     integrations:
       # Must match the name you give the App Store Connect API key in
       # Codemagic: Team settings > Integrations > Developer Portal.
-      app_store_connect: TaxPulse ASC Key
+      app_store_connect: AppStore Connect Key
     environment:
       ios_signing:
         distribution_type: app_store
